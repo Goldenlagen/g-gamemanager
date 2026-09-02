@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://media.forgecdn.net https://mediafilez.forgecdn.net; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <title>G-GameManager</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <div class="app-tabs">
+    <button class="app-tab active" data-view="games">🎮 Jeux</button>
+    <button class="app-tab" data-view="minecraft"><img src="assets/minecraft-tab-icon.png" class="tab-icon" alt="" /> Serveurs Minecraft</button>
+    <button class="app-tab" data-view="mcprofiles"><img src="assets/minecraft-tab-icon.png" class="tab-icon" alt="" /> Minecraft Profiles</button>
+    <button class="app-tab" data-view="ark"><img src="assets/ark-tab-icon.png" class="tab-icon" alt="" /> Serveurs Ark</button>
+    <button class="app-tab" data-view="performance"><img src="assets/perf-tab-icon.png" class="tab-icon" alt="" /> Performance</button>
+  </div>
+
+  <div id="view-games" class="view active">
+
+  <div class="topbar">
+    <div class="topbar-title">🎮 G-GameManager</div>
+
+    <div class="topbar-filters">
+      <label>Plateforme :</label>
+      <select id="platformFilter">
+        <option value="all">Tous les jeux</option>
+        <option value="steam">Steam</option>
+        <option value="epic">Epic Games</option>
+        <option value="riot">Riot Games</option>
+        <option value="gog">GOG</option>
+        <option value="battlenet">Battle.net</option>
+        <option value="origin">Origin / EA App</option>
+        <option value="ubisoft">Ubisoft Connect</option>
+        <option value="microsoft">Microsoft / Xbox</option>
+        <option value="standalone">Sans launcher</option>
+        <option value="manual">Ajoutés manuellement</option>
+      </select>
+
+      <label>Rechercher :</label>
+      <input type="text" id="searchBox" placeholder="Nom du jeu…" />
+    </div>
+
+    <div class="topbar-actions">
+      <button id="settingsBtn">⚙ Paramètres</button>
+      <button id="refreshBtn">⟳ Resynchroniser</button>
+      <button id="addGameBtn">+ Ajouter un jeu</button>
+      <button id="minimizeBtn">—</button>
+    </div>
+  </div>
+
+  <div class="content">
+    <div id="gamesGrid" class="games-grid"></div>
+
+    <div id="loadingOverlay" class="overlay">
+      <div class="overlay-inner">
+        <div class="overlay-title">Recherche de vos jeux…</div>
+        <div class="spinner"></div>
+      </div>
+    </div>
+
+    <div id="emptyState" class="empty-state" style="display:none;">
+      Aucun jeu trouvé. Essayez « Rafraîchir » ou ajoutez un jeu manuellement.
+    </div>
+
+    <div id="settingsPanel" class="settings-panel" style="display:none;">
+      <div class="settings-header">
+        <div class="settings-title">Paramètres</div>
+        <button id="closeSettingsBtn">✕</button>
+      </div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="startupCheckbox" />
+        Lancer au démarrage de Windows
+      </label>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="standaloneScanCheckbox" />
+        Détecter les jeux installés sans launcher (expérimental)
+      </label>
+      <p class="settings-hint">
+        Recherche des jeux installés directement (sans Steam/Epic/etc.) via le registre
+        Windows. Best-effort : peut inclure quelques logiciels qui ne sont pas des jeux,
+        Windows ne faisant pas de différence fiable entre les deux. Désactivé par défaut.
+        Nécessite une resynchronisation (bouton « ⟳ Resynchroniser ») pour prendre effet.
+      </p>
+
+      <p id="lastSyncInfo" class="settings-hint">Dernière synchronisation : —</p>
+      <p class="settings-hint">
+        La liste des jeux est mise en cache et resynchronisée automatiquement une
+        fois par semaine. Utilise « ⟳ Resynchroniser » en haut pour forcer une
+        resynchronisation immédiate (par exemple après avoir installé un nouveau jeu).
+      </p>
+
+      <div class="settings-subtitle">Jeux ajoutés manuellement</div>
+      <div id="manualGamesList" class="manual-games-list"></div>
+
+      <p class="settings-hint">
+        Astuce : si un jeu (notamment Riot Games ou Battle.net) n'est pas détecté
+        automatiquement, ajoute-le manuellement via « + Ajouter un jeu ».
+      </p>
+    </div>
+  </div>
+
+  <div id="addGameModal" class="modal-backdrop" style="display:none;">
+    <div class="modal">
+      <div class="modal-title">Ajouter un jeu</div>
+      <label>Nom affiché :</label>
+      <input type="text" id="addGameNameInput" />
+      <div class="modal-path" id="addGamePathLabel"></div>
+      <div class="modal-actions">
+        <button id="addGameCancelBtn" class="secondary">Annuler</button>
+        <button id="addGameConfirmBtn">Ajouter</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottombar">
+    ↵ Lancer &nbsp;•&nbsp; ← → ↑ ↓ Naviguer &nbsp;•&nbsp; Échap Réduire &nbsp;•&nbsp; Manette compatible
+  </div>
+
+  </div><!-- /view-games -->
+
+  <div id="view-minecraft" class="view">
+    <div class="topbar">
+      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> Serveurs Minecraft</div>
+      <div class="topbar-filters">
+        <span id="mcRootFolderLabel" class="folder-label">Aucun dossier sélectionné</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="mcChooseFolderBtn">📁 Choisir le dossier</button>
+        <button id="mcRefreshBtn">⟳ Rafraîchir</button>
+      </div>
+    </div>
+
+    <div class="server-content">
+      <div id="mcServerList" class="server-list"></div>
+      <div id="mcEmptyState" class="empty-state" style="display:none;">
+        Sélectionne le dossier contenant tes serveurs Minecraft pour commencer.
+      </div>
+
+      <div id="mcServerDetail" class="server-detail" style="display:none;">
+        <button class="back-btn" id="mcBackBtn">← Retour à la liste</button>
+        <h2>
+          <span id="mcStatusDot" class="status-dot status-stopped"></span>
+          <span id="mcDetailName"></span>
+        </h2>
+        <div id="mcErrorBanner" class="error-banner" style="display:none;"></div>
+        <div id="mcStopWarningBanner" class="warning-banner" style="display:none;"></div>
+        <div class="server-detail-actions">
+          <button id="mcLaunchBtn">▶ Lancer le serveur</button>
+          <button id="mcStopBtn" class="danger" disabled>■ Arrêter le serveur</button>
+          <button id="mcForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
+          <span id="mcLaunchScriptInfo" class="hint-text"></span>
+        </div>
+        <p class="hint-text" style="margin-top:-14px;margin-bottom:20px;">
+          « Arrêter » envoie la commande <code>stop</code> (le serveur sauvegarde avant de quitter).
+          « Forcer l'arrêt » tue immédiatement le script et Java — utile si la console reste bloquée
+          en demandant d'appuyer sur Ctrl+C (un signal qu'on ne peut pas simuler via une commande texte).
+        </p>
+
+        <div class="detail-section">
+          <h3>Console</h3>
+          <div id="mcConsoleOutput" class="console-output"></div>
+          <div class="console-command-row">
+            <input type="text" id="mcCommandInput" placeholder="Commande (ex: say Bonjour, op Steve…)" disabled />
+            <button id="mcSendCommandBtn" disabled>Envoyer</button>
+          </div>
+          <p class="hint-text">Le serveur doit être en cours d'exécution pour envoyer une commande.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3>Arguments de lancement (JVM)</h3>
+          <p id="mcJvmArgsHint" class="hint-text"></p>
+          <textarea id="mcJvmArgsTextarea" class="args-textarea" placeholder="-Xmx4G -Xms2G -XX:+UseG1GC"></textarea>
+          <button id="mcSaveArgsBtn">💾 Enregistrer les arguments</button>
+          <span id="mcArgsSaveStatus" class="save-status"></span>
+        </div>
+
+        <div class="detail-section">
+          <h3>Propriétés du serveur (server.properties)</h3>
+          <div id="mcPropertiesForm" class="properties-form"></div>
+          <button id="mcSavePropertiesBtn">💾 Enregistrer les propriétés</button>
+          <span id="mcPropertiesSaveStatus" class="save-status"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-mcprofiles" class="view">
+    <div class="topbar">
+      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> Minecraft Profiles</div>
+      <div class="topbar-filters">
+        <span id="mcpDirLabel" class="folder-label"></span>
+      </div>
+      <div class="topbar-actions">
+        <button id="mcBrowseModpacksBtn" class="primary-highlight">🧩 Parcourir les modpacks</button>
+        <button id="mcpRefreshBtn">⟳ Rafraîchir</button>
+      </div>
+    </div>
+
+    <!-- ---------- Navigateur de modpacks CurseForge ---------- -->
+    <div id="cfModal" class="modal-backdrop" style="display:none;">
+      <div class="modal modal-xwide">
+        <div class="cf-modal-header">
+          <div class="modal-title" style="margin-bottom:0;">🧩 Modpacks CurseForge</div>
+          <button id="cfCloseBtn" class="secondary">✕ Fermer</button>
+        </div>
+
+        <div class="cf-toolbar">
+          <input type="text" id="cfSearchInput" placeholder="Rechercher un modpack…" />
+          <div class="cf-cat-dropdown">
+            <button type="button" id="cfCategoryBtn" class="cf-cat-btn">Tous les types ▾</button>
+            <div id="cfCategoryPanel" class="cf-cat-panel" style="display:none;"></div>
+          </div>
+          <button id="cfSearchBtn">🔍 Rechercher</button>
+        </div>
+
+        <div id="cfErrorBanner" class="error-banner" style="display:none;"></div>
+
+        <div id="cfDownloadStatus" class="cf-download-status" style="display:none;">
+          <p id="cfDownloadLabel" class="hint-text" style="margin:0 0 6px 0;"></p>
+          <div class="perf-bar-track"><div id="cfDownloadBar" class="perf-bar-fill"></div></div>
+        </div>
+
+        <div id="cfGrid" class="cf-grid"></div>
+        <div id="cfEmpty" class="hint-text" style="display:none;padding:24px;text-align:center;">
+          Aucun modpack trouvé.
+        </div>
+        <div id="cfLoading" class="hint-text" style="display:none;padding:24px;text-align:center;">
+          Chargement…
+        </div>
+
+        <div class="cf-pagination">
+          <button id="cfPrevBtn" class="secondary" disabled>← Précédent</button>
+          <span id="cfPageInfo" class="hint-text"></span>
+          <button id="cfNextBtn" class="secondary" disabled>Suivant →</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="server-content">
+      <p class="hint-text" id="mcpIntro" style="margin-top:0;">
+        Profils du launcher Minecraft officiel. Installe un modpack via « Parcourir les modpacks » :
+        les mods, le loader (Forge/NeoForge/Fabric) et un profil dédié (avec l'icône du modpack) sont
+        créés automatiquement.
+      </p>
+      <div id="mcpWarning" class="warning-banner" style="display:none;"></div>
+      <div id="mcpProfilesList" class="cf-profiles-list"></div>
+      <div id="mcpEmpty" class="empty-state" style="display:none;position:static;padding:40px;">
+        Aucun profil trouvé dans le launcher Minecraft.
+      </div>
+    </div>
+  </div>
+
+  <div id="view-ark" class="view">
+    <div class="topbar">
+      <div class="topbar-title"><img src="assets/ark-tab-icon.png" class="title-icon" alt="" /> Serveurs Ark</div>
+      <div class="topbar-filters">
+        <span id="arkRootFolderLabel" class="folder-label">Aucun dossier sélectionné</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="arkCreateServerBtn">✨ Créer un serveur</button>
+        <button id="arkChooseFolderBtn">📁 Choisir le dossier</button>
+        <button id="arkRefreshBtn">⟳ Rafraîchir</button>
+      </div>
+    </div>
+
+    <div id="arkCreateServerModal" class="modal-backdrop" style="display:none;">
+      <div class="modal modal-wide">
+        <div class="modal-title">✨ Créer un nouveau serveur Ark</div>
+
+        <div id="arkCreateForm">
+          <p class="hint-text">
+            Installe automatiquement un nouveau serveur dédié via SteamCMD, applique tes réglages,
+            puis le lance. Nécessite que SteamCMD soit déjà téléchargé (panneau ci-dessus) et un
+            dossier racine sélectionné.
+          </p>
+
+          <div class="form-grid">
+            <label>Nom du dossier du serveur
+              <input type="text" id="arkCreateFolderName" placeholder="ex: MonServeurArk" />
+            </label>
+            <label>Édition
+              <select id="arkCreateEdition">
+                <option value="ascended">ARK: Survival Ascended</option>
+                <option value="evolved">ARK: Survival Evolved</option>
+              </select>
+            </label>
+            <label>Carte
+              <select id="arkCreateMapSelect"></select>
+            </label>
+            <label id="arkCreateCustomMapWrap" style="display:none;">Carte personnalisée
+              <input type="text" id="arkCreateCustomMapInput" placeholder="ex: MyModdedMap_WP" />
+            </label>
+            <label>Nom de session
+              <input type="text" id="arkCreateSessionName" value="Mon Serveur Ark" />
+            </label>
+            <label>Mot de passe serveur
+              <input type="text" id="arkCreateServerPassword" />
+            </label>
+            <label>Mot de passe admin
+              <input type="text" id="arkCreateAdminPassword" />
+            </label>
+            <label>Joueurs max
+              <input type="number" id="arkCreateMaxPlayers" min="1" max="255" value="70" />
+            </label>
+            <label>Port
+              <input type="number" id="arkCreatePort" value="7777" />
+            </label>
+            <label>Query Port
+              <input type="number" id="arkCreateQueryPort" value="27015" />
+            </label>
+          </div>
+
+          <div class="form-grid">
+            <label class="checkbox-field">
+              <input type="checkbox" id="arkCreatePve" />
+              <span>Mode PvE (pas de combat JcJ)</span>
+            </label>
+            <label>Difficulté (0 à 1)
+              <input type="number" id="arkCreateDifficulty" min="0" max="1" step="0.1" value="1" />
+            </label>
+            <label>Niveau max des dinosaures sauvages
+              <input type="number" id="arkCreateMaxDinoLevel" min="30" step="30" value="150" />
+            </label>
+            <label>Multiplicateur XP
+              <input type="number" id="arkCreateXpMultiplier" min="0" step="0.5" value="1" />
+            </label>
+            <label>Multiplicateur domestication
+              <input type="number" id="arkCreateTamingMultiplier" min="0" step="0.5" value="1" />
+            </label>
+            <label>Multiplicateur récolte
+              <input type="number" id="arkCreateHarvestMultiplier" min="0" step="0.5" value="1" />
+            </label>
+          </div>
+          <p class="hint-text" style="margin-top:-8px;">
+            Le niveau maximum par défaut d'un serveur Ark officiel est 30. Réglé ici sur 150 (le
+            standard le plus courant sur les serveurs communautaires), via le paramètre
+            <code>OverrideOfficialDifficulty</code> calculé automatiquement (niveau max ≈ 30 × cette valeur).
+          </p>
+
+          <div class="modal-actions">
+            <button id="arkCreateCancelBtn" class="secondary">Annuler</button>
+            <button id="arkCreateConfirmBtn">✨ Créer et lancer</button>
+          </div>
+        </div>
+
+        <div id="arkCreateProgress" style="display:none;">
+          <p id="arkCreateProgressLabel" class="hint-text"></p>
+          <p id="arkCreateFolderProgress" class="hint-text" style="color:#4cc2ff;"></p>
+          <div id="arkCreateConsoleOutput" class="console-output"></div>
+          <p class="hint-text" style="margin-top:6px;">
+            Note : SteamCMD n'affiche parfois aucune sortie pendant plusieurs minutes (il bufferise
+            sa console quand elle n'est pas interactive) même quand le téléchargement avance
+            normalement — fie-toi à l'indicateur de taille ci-dessus plutôt qu'à un écran vide.
+          </p>
+          <div id="arkCreateErrorBanner" class="error-banner" style="display:none;"></div>
+          <div class="modal-actions">
+            <button id="arkCreateCloseBtn" class="secondary" style="display:none;">Fermer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="server-content">
+      <div class="detail-section">
+        <h3>
+          <span id="steamcmdStatusDot" class="status-dot status-stopped"></span>
+          SteamCMD
+        </h3>
+        <p class="hint-text">
+          Outil en ligne de commande officiel de Valve, pratique pour installer ou mettre à jour
+          un serveur dédié Ark (ou tout autre jeu) sans passer par le client Steam complet.
+        </p>
+
+        <div id="steamcmdNotInstalled">
+          <p class="hint-text">SteamCMD n'est pas encore installé.</p>
+          <button id="steamcmdDownloadBtn">⬇ Télécharger SteamCMD</button>
+          <span id="steamcmdDownloadStatus" class="save-status"></span>
+        </div>
+
+        <div id="steamcmdInstalled" style="display:none;">
+          <div class="server-detail-actions">
+            <button id="steamcmdLaunchBtn">▶ Lancer SteamCMD</button>
+            <button id="steamcmdStopBtn" class="danger" disabled>■ Arrêter</button>
+            <button id="steamcmdForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
+            <button id="steamcmdResetBtn" class="secondary">🔄 Réinitialiser SteamCMD</button>
+          </div>
+          <p class="hint-text" style="margin-top:-14px;margin-bottom:16px;">
+            En cas d'erreur du type <em>« didn't shutdown cleanly »</em> ou <em>« missing configuration »</em>
+            lors d'une installation, les fichiers internes de SteamCMD sont probablement corrompus
+            (souvent après un arrêt brutal). « Réinitialiser SteamCMD » supprime tout et permet de
+            retélécharger une copie propre.
+          </p>
+
+          <div id="steamcmdErrorBanner" class="error-banner" style="display:none;"></div>
+
+          <div id="steamcmdConsoleOutput" class="console-output"></div>
+
+          <div class="console-command-row">
+            <input type="text" id="steamcmdCommandInput" placeholder="Commande (ex: login anonymous)" disabled />
+            <button id="steamcmdSendCommandBtn" disabled>Envoyer</button>
+          </div>
+
+          <div class="quick-command-row">
+            <span class="hint-text">Raccourcis (remplissent le champ, à toi de valider) :</span>
+            <button class="quick-cmd secondary" data-cmd="login anonymous">login anonymous</button>
+            <button class="quick-cmd secondary" data-cmd="app_update 2430930 validate">MAJ Ark Ascended (2430930)</button>
+            <button class="quick-cmd secondary" data-cmd="app_update 376030 validate">MAJ Ark Evolved (376030)</button>
+            <button class="quick-cmd secondary" data-cmd="quit">quit</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="server-list-wrapper">
+      <div id="arkServerList" class="server-list"></div>
+      <div id="arkEmptyState" class="empty-state" style="display:none;">
+        Sélectionne le dossier contenant tes serveurs Ark pour commencer.
+      </div>
+
+      <div id="arkServerDetail" class="server-detail" style="display:none;">
+        <button class="back-btn" id="arkBackBtn">← Retour à la liste</button>
+        <h2>
+          <span id="arkStatusDot" class="status-dot status-stopped"></span>
+          <span id="arkDetailName"></span>
+        </h2>
+        <div id="arkErrorBanner" class="error-banner" style="display:none;"></div>
+        <div id="arkStopWarningBanner" class="warning-banner" style="display:none;"></div>
+        <div class="server-detail-actions">
+          <button id="arkSetupBtn" class="primary-highlight">🛠 Setup Ark Server</button>
+          <button id="arkLaunchBtn">▶ Lancer le serveur</button>
+          <button id="arkStopBtn" class="danger" disabled>■ Arrêter le serveur</button>
+          <button id="arkForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
+          <button id="arkGenerateScriptBtn" class="secondary">📄 Générer un script .bat</button>
+          <span id="arkLaunchInfo" class="hint-text"></span>
+        </div>
+        <p class="hint-text" style="margin-top:-14px;margin-bottom:8px;">
+          <strong>« Setup Ark Server »</strong> applique en un clic la carte/session ci-dessous et les
+          paramètres serveur courants, puis lance directement — pratique pour un serveur déjà installé,
+          sans repasser par SteamCMD.
+        </p>
+        <p class="hint-text" style="margin-top:-4px;margin-bottom:20px;">
+          « Arrêter » ferme le processus. « Forcer l'arrêt » tue immédiatement tout l'arbre de
+          processus (script + serveur) — utile si la console reste bloquée en demandant d'appuyer
+          sur Ctrl+C (un signal qu'on ne peut pas simuler via une commande texte). Attention : un
+          arrêt forcé ne laisse pas au serveur le temps de sauvegarder proprement.
+        </p>
+
+        <div class="detail-section">
+          <h3>Console</h3>
+          <div id="arkConsoleOutput" class="console-output"></div>
+          <div class="console-command-row">
+            <input type="text" id="arkCommandInput" placeholder="Commande" disabled />
+            <button id="arkSendCommandBtn" disabled>Envoyer</button>
+          </div>
+          <p class="hint-text">Le serveur doit être en cours d'exécution pour envoyer une commande. Note : contrairement à Minecraft, les serveurs Ark ne lisent généralement pas de commandes via cette console (ils utilisent le protocole RCON) — l'envoi peut donc n'avoir aucun effet selon ta configuration.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3>Carte et session</h3>
+          <div class="form-grid">
+            <label>Carte
+              <select id="arkMapSelect"></select>
+            </label>
+            <label id="arkCustomMapWrap" style="display:none;">Carte personnalisée
+              <input type="text" id="arkCustomMapInput" placeholder="ex: MyModdedMap_WP" />
+            </label>
+            <label>Nom de session
+              <input type="text" id="arkSessionName" />
+            </label>
+            <label>Mot de passe serveur
+              <input type="text" id="arkServerPassword" />
+            </label>
+            <label>Mot de passe admin
+              <input type="text" id="arkAdminPassword" />
+            </label>
+            <label>Joueurs max
+              <input type="number" id="arkMaxPlayers" min="1" max="255" />
+            </label>
+            <label>Port
+              <input type="number" id="arkPort" />
+            </label>
+            <label>Query Port
+              <input type="number" id="arkQueryPort" />
+            </label>
+          </div>
+          <label class="full-width">Paramètres de session additionnels (ex: RCONEnabled=True?RCONPort=27020)
+            <input type="text" id="arkExtraSessionParams" />
+          </label>
+          <label class="full-width">Arguments additionnels (ex: -server -log -NoBattlEye)
+            <input type="text" id="arkExtraFlags" />
+          </label>
+          <button id="arkSaveLaunchConfigBtn">💾 Enregistrer la configuration de lancement</button>
+          <span id="arkLaunchSaveStatus" class="save-status"></span>
+        </div>
+
+        <div class="detail-section">
+          <h3>Paramètres serveur courants</h3>
+          <div id="arkCommonSettingsForm" class="properties-form"></div>
+          <button id="arkSaveCommonSettingsBtn">💾 Enregistrer ces paramètres</button>
+          <span id="arkCommonSaveStatus" class="save-status"></span>
+        </div>
+
+        <div class="detail-section">
+          <details>
+            <summary>Paramètres avancés (tous les réglages ServerSettings/SessionSettings)</summary>
+            <div id="arkAdvancedForm" class="properties-form"></div>
+            <div class="add-entry-row">
+              <input type="text" id="arkNewKeyInput" placeholder="Nouvelle clé (ex: bDisableStructurePlacementCollision)" />
+              <input type="text" id="arkNewValueInput" placeholder="Valeur" />
+              <button id="arkAddEntryBtn">+ Ajouter</button>
+            </div>
+            <button id="arkSaveAdvancedBtn">💾 Enregistrer les paramètres avancés</button>
+            <span id="arkAdvancedSaveStatus" class="save-status"></span>
+          </details>
+        </div>
+      </div>
+      </div><!-- /server-list-wrapper -->
+    </div>
+  </div>
+
+  <div id="view-performance" class="view">
+    <div class="topbar">
+      <div class="topbar-title"><img src="assets/perf-tab-icon.png" class="title-icon" alt="" /> Performance</div>
+      <div class="topbar-filters">
+        <span id="perfUpdatedLabel" class="folder-label"></span>
+      </div>
+    </div>
+
+    <div class="server-content">
+      <div class="perf-grid">
+
+        <div class="detail-section perf-card">
+          <h3>Processeur (CPU)</h3>
+          <div class="perf-big-number" id="perfCpuPercent">—</div>
+          <div class="perf-bar-track"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
+          <p class="hint-text" id="perfCpuModel"></p>
+          <div id="perfCpuCores" class="perf-cores"></div>
+        </div>
+
+        <div class="detail-section perf-card">
+          <h3>Mémoire (RAM)</h3>
+          <div class="perf-big-number" id="perfRamPercent">—</div>
+          <div class="perf-bar-track"><div id="perfRamBar" class="perf-bar-fill"></div></div>
+          <p class="hint-text" id="perfRamDetail"></p>
+        </div>
+
+        <div class="detail-section perf-card">
+          <h3>Carte graphique (GPU)</h3>
+          <div class="perf-big-number" id="perfGpuPercent">—</div>
+          <div class="perf-bar-track"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
+          <div id="perfGpuList" class="hint-text"></div>
+          <p id="perfGpuEmpty" class="hint-text" style="display:none;">Aucune carte graphique détectée.</p>
+        </div>
+
+        <div class="detail-section perf-card perf-card-wide">
+          <h3>Disques</h3>
+          <div id="perfDisksList"></div>
+          <p id="perfDisksEmpty" class="hint-text" style="display:none;">Impossible de lire l'état des disques.</p>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="sound.js"></script>
+  <script src="renderer.js"></script>
+  <script src="minecraft.js"></script>
+  <script src="curseforge.js"></script>
+  <script src="mcprofiles.js"></script>
+  <script src="ark.js"></script>
+  <script src="steamcmd.js"></script>
+  <script src="performance.js"></script>
+</body>
+</html>

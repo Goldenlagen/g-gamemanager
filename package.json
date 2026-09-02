@@ -1,0 +1,46 @@
+{
+  "name": "g-gamemanager",
+  "productName": "G-GameManager",
+  "version": "1.0.0",
+  "description": "Ludothèque façon Steam Big Picture pour Windows (Steam, Epic, GOG, Battle.net, Riot Games + ajout manuel)",
+  "main": "main.js",
+  "author": "Goldenlagen",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.goldenlagen.ggamemanager",
+    "productName": "G-GameManager",
+    "icon": "build/icon.ico",
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "scanners/**/*",
+      "servers/**/*",
+      "services/**/*"
+    ],
+    "asarUnpack": [
+      "scanners/*.ps1"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

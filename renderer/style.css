@@ -1,0 +1,1186 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: #0b0c10;
+  color: #ffffff;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------- Barre du haut ---------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  background: #14151b;
+  padding: 16px 24px;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.topbar-title {
+  font-size: 22px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.topbar-filters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.topbar-filters label {
+  color: #aaaaaa;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+.topbar-filters select,
+.topbar-filters input {
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 14px;
+}
+
+.topbar-filters input {
+  width: 220px;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  background: #1f2027;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button:hover {
+  background: #2c2d36;
+}
+
+button.secondary {
+  background: #3a3b45;
+}
+
+/* ---------- Contenu principal ---------- */
+
+.content {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.games-grid {
+  height: 100%;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  padding: 14px;
+}
+
+.games-grid.locked {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.platform-section-header {
+  width: 100%;
+  flex-basis: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #8a8b95;
+  padding: 20px 6px 8px 6px;
+  border-bottom: 1px solid #2a2b33;
+  margin-bottom: 4px;
+}
+
+.platform-section-header:first-child {
+  padding-top: 2px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button:disabled:hover {
+  background: #1f2027;
+}
+
+.game-tile {
+  width: 220px;
+  height: 370px;
+  margin: 10px;
+  border-radius: 10px;
+  background: #1c1d24;
+  border: 3px solid transparent;
+  padding: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transform: scale(1);
+  transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+  outline: none;
+}
+
+.game-tile:hover {
+  background: #24252e;
+}
+
+.game-tile.selected {
+  border-color: #4cc2ff;
+  transform: scale(1.06);
+  z-index: 1;
+}
+
+.game-tile-icon {
+  flex: 1;
+  border-radius: 6px;
+  background: #101116;
+  margin-bottom: 8px;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-tile-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.game-tile-icon img.contain {
+  width: auto;
+  height: auto;
+  max-width: 80%;
+  max-height: 80%;
+  object-fit: contain;
+}
+
+.game-tile-icon .fallback-letter {
+  font-size: 52px;
+  font-weight: bold;
+  color: #33343e;
+}
+
+.game-tile-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  max-height: 38px;
+}
+
+.game-tile-platform {
+  font-size: 11px;
+  color: #8a8b95;
+  margin-top: 4px;
+}
+
+/* ---------- Overlay de chargement ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(11, 12, 16, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overlay-inner {
+  text-align: center;
+}
+
+.overlay-title {
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #2c2d36;
+  border-top-color: #4cc2ff;
+  border-radius: 50%;
+  margin: 0 auto;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Etat vide ---------- */
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #777777;
+  text-align: center;
+  padding: 0 40px;
+}
+
+/* ---------- Panneau de paramètres ---------- */
+
+.settings-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 380px;
+  background: #181920;
+  border-left: 1px solid #2a2b33;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.settings-title {
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.settings-subtitle {
+  font-weight: 600;
+  margin-top: 28px;
+  margin-bottom: 10px;
+}
+
+.manual-games-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.manual-game-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  color: #dddddd;
+  font-size: 14px;
+}
+
+.manual-game-row button {
+  padding: 6px 10px;
+  font-size: 12px;
+  background: #3a3b45;
+}
+
+.settings-hint {
+  color: #777777;
+  font-size: 12px;
+  margin-top: 20px;
+  line-height: 1.5;
+}
+
+/* ---------- Modale d'ajout de jeu ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal {
+  background: #16171d;
+  border-radius: 10px;
+  padding: 24px;
+  width: 420px;
+  max-height: 85vh;
+  overflow-y: auto;
+}
+
+.modal-wide {
+  width: 640px;
+}
+
+.modal-xwide {
+  width: 1080px;
+  max-width: 94vw;
+}
+
+/* ---------- Navigateur de modpacks CurseForge ---------- */
+
+.cf-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.cf-apikey-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.cf-apikey-row label {
+  color: #aaaaaa;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.cf-apikey-row input {
+  flex: 1;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.cf-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.cf-toolbar input {
+  flex: 1;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 9px 10px;
+  font-size: 14px;
+}
+
+.cf-toolbar select {
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 9px 10px;
+  font-size: 13px;
+  min-width: 180px;
+}
+
+.cf-download-status {
+  background: #16171d;
+  border: 1px solid #2a2b33;
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+
+.cf-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 14px;
+  min-height: 320px;
+  align-content: start;
+}
+
+@media (max-width: 900px) {
+  .cf-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+.cf-card {
+  background: #1c1d24;
+  border: 1px solid #2a2b33;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.cf-card.cf-card-downloading {
+  border-color: #4cc2ff;
+}
+
+.cf-card-thumb {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 6px;
+  background: #101116;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.cf-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cf-thumb-fallback {
+  font-size: 42px;
+  font-weight: bold;
+  color: #33343e;
+}
+
+.cf-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  min-height: 34px;
+}
+
+.cf-card-meta {
+  font-size: 11px;
+  color: #8a8b95;
+  margin: 4px 0;
+}
+
+.cf-card-summary {
+  font-size: 11px;
+  color: #6f7079;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  flex: 1;
+  margin-bottom: 8px;
+}
+
+.cf-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+button.cf-dl-btn {
+  padding: 7px 8px;
+  font-size: 12px;
+  width: 100%;
+}
+
+.cf-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: bold;
+  margin-bottom: 16px;
+}
+
+.modal label {
+  display: block;
+  color: #cccccc;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.modal input[type="text"] {
+  width: 100%;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.modal-path {
+  font-size: 12px;
+  color: #777777;
+  word-break: break-all;
+  margin-bottom: 16px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 10px;
+  vertical-align: middle;
+  background: #666666;
+  flex-shrink: 0;
+}
+
+.status-stopped { background: #e0483e; }
+.status-running { background: #3ecf6e; box-shadow: 0 0 8px #3ecf6e; }
+.status-starting { background: #e0a83e; }
+.status-error { background: #e0483e; box-shadow: 0 0 8px #e0483e; }
+
+.server-card .status-dot {
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+}
+
+button.danger {
+  background: #4a2226;
+  color: #ff8a80;
+}
+
+button.danger:hover {
+  background: #5c2a2f;
+}
+
+button.danger:disabled {
+  opacity: 0.35;
+}
+
+button.primary-highlight {
+  background: #2a5d8f;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+button.primary-highlight:hover {
+  background: #35719f;
+}
+
+.error-banner {
+  background: #3a1e1e;
+  border: 1px solid #6b2b2b;
+  color: #ff9d92;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.warning-banner {
+  background: #3a2e1a;
+  border: 1px solid #6b5127;
+  color: #ffc98a;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.console-output {
+  background: #08090b;
+  border: 1px solid #2a2b33;
+  border-radius: 6px;
+  padding: 12px;
+  height: 260px;
+  overflow-y: auto;
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #c9d1d9;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-output .console-line-error {
+  color: #ff8a80;
+}
+
+.console-output .console-empty {
+  color: #555555;
+  font-style: italic;
+}
+
+.console-command-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.console-command-row input {
+  flex: 1;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+  font-size: 13px;
+}
+
+.console-command-row input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.console-output .console-line-command {
+  color: #4cc2ff;
+}
+
+/* ---------- Onglets d'application ---------- */
+
+.app-tabs {
+  display: flex;
+  background: #0e0f13;
+  padding: 0 24px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #22232b;
+}
+
+.app-tabs.locked {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.app-tab {
+  background: transparent;
+  border-radius: 0;
+  padding: 12px 18px;
+  color: #888888;
+  border-bottom: 2px solid transparent;
+}
+
+.app-tab:hover {
+  background: #16171d;
+  color: #ffffff;
+}
+
+.app-tab.active {
+  color: #4cc2ff;
+  border-bottom-color: #4cc2ff;
+}
+
+.view {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.view.active {
+  display: flex;
+}
+
+.tab-icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
+
+.title-icon {
+  width: 24px;
+  height: 24px;
+  vertical-align: -5px;
+  margin-right: 6px;
+}
+
+.folder-label {
+  color: #8a8b95;
+  font-size: 13px;
+  font-style: italic;
+}
+
+/* ---------- Vues serveurs (Minecraft / Ark) ---------- */
+
+.server-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  position: relative;
+}
+
+.server-list-wrapper {
+  position: relative;
+  flex: 1;
+  min-height: 300px;
+}
+
+.quick-command-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.quick-command-row .hint-text {
+  margin-right: 4px;
+}
+
+button.quick-cmd {
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+}
+
+.server-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.server-card {
+  width: 240px;
+  background: #1c1d24;
+  border: 1px solid #2a2b33;
+  border-radius: 10px;
+  padding: 18px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.server-card:hover {
+  background: #24252e;
+  border-color: #4cc2ff;
+}
+
+.server-card h4 {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.server-card .server-card-meta {
+  font-size: 12px;
+  color: #8a8b95;
+  line-height: 1.6;
+}
+
+.server-detail {
+  width: 100%;
+}
+
+.back-btn {
+  background: transparent;
+  color: #4cc2ff;
+  padding: 6px 0;
+  margin-bottom: 12px;
+}
+
+.back-btn:hover {
+  background: transparent;
+  text-decoration: underline;
+}
+
+.server-detail h2 {
+  margin-top: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.server-detail-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.detail-section {
+  background: #16171d;
+  border: 1px solid #2a2b33;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.detail-section h3 {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+.perf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.perf-card-wide {
+  grid-column: 1 / -1;
+}
+
+.perf-big-number {
+  font-size: 36px;
+  font-weight: 700;
+  margin: 8px 0;
+}
+
+.perf-bar-track {
+  width: 100%;
+  height: 10px;
+  background: #22232b;
+  border-radius: 5px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.perf-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: #4cc2ff;
+  border-radius: 5px;
+  transition: width 0.4s ease, background 0.4s ease;
+}
+
+.perf-bar-fill.perf-warning { background: #ffb84c; }
+.perf-bar-fill.perf-critical { background: #e0483e; }
+
+.perf-cores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.perf-core-bar {
+  flex: 1;
+  min-width: 14px;
+  height: 34px;
+  background: #22232b;
+  border-radius: 3px;
+  position: relative;
+  overflow: hidden;
+}
+
+.perf-core-bar-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: #4cc2ff;
+  transition: height 0.4s ease, background 0.4s ease;
+}
+
+.perf-disk-row {
+  margin-bottom: 16px;
+}
+
+.perf-disk-row:last-child {
+  margin-bottom: 0;
+}
+
+.perf-disk-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.hint-text {
+  color: #8a8b95;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.save-status {
+  color: #4cc2ff;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.args-textarea {
+  width: 100%;
+  min-height: 70px;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 10px;
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+  font-size: 13px;
+  resize: vertical;
+  margin-bottom: 10px;
+}
+
+.properties-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+  margin-bottom: 14px;
+}
+
+.properties-form label,
+.form-grid label,
+.form-grid label.full-width,
+label.full-width {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #aaaaaa;
+}
+
+label.full-width {
+  margin-bottom: 14px;
+}
+
+.properties-form input[type="text"],
+.properties-form input[type="number"],
+.form-grid input,
+.form-grid select,
+label.full-width input {
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.properties-form .checkbox-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+.add-entry-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.add-entry-row input {
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+  flex: 1;
+}
+
+details summary {
+  cursor: pointer;
+  color: #4cc2ff;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+/* ---------- Barre du bas ---------- */
+
+.bottombar {
+  background: #14151b;
+  color: #777777;
+  font-size: 13px;
+  padding: 10px 24px;
+  flex-shrink: 0;
+}
+
+/* ---------- Sélecteur de version (carte modpack) ---------- */
+
+.cf-version-select {
+  width: 100%;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 6px;
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+
+/* ---------- Onglet Minecraft Profiles ---------- */
+
+.cf-profiles-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cf-profile-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: #1c1d24;
+  border: 1px solid #2a2b33;
+  border-radius: 10px;
+  padding: 14px 18px;
+}
+
+.cf-profile-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 8px;
+  background: #101116;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cf-profile-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.cf-profile-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.cf-profile-name {
+  font-weight: 600;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cf-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #0b0c10;
+  background: #4cc2ff;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.cf-profile-meta {
+  font-size: 12px;
+  color: #8a8b95;
+  margin-top: 4px;
+}
+
+.cf-profile-dir {
+  font-size: 11px;
+  color: #5f6069;
+  margin-top: 4px;
+  word-break: break-all;
+}
+
+.cf-profile-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.cf-profile-actions button {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+/* ---------- Filtre de types (cases à cocher) ---------- */
+
+.cf-cat-dropdown {
+  position: relative;
+}
+
+.cf-cat-btn {
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 9px 12px;
+  font-size: 13px;
+  white-space: nowrap;
+  min-width: 150px;
+  text-align: left;
+}
+
+.cf-cat-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 200;
+  background: #1c1d24;
+  border: 1px solid #3a3b45;
+  border-radius: 6px;
+  padding: 6px;
+  width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.cf-cat-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #dddddd;
+  cursor: pointer;
+}
+
+.cf-cat-option:hover {
+  background: #24252e;
+}
+
+.cf-cat-option input {
+  cursor: pointer;
+}
+
+/* ---------- Variantes d'étiquettes de profil ---------- */
+
+.cf-badge-modpack { background: #4cc2ff; }
+.cf-badge-vanilla { background: #3ecf6e; }
+.cf-badge-other { background: #8a8b95; }
