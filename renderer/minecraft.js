@@ -28,6 +28,7 @@
     launchBtn: document.getElementById('mcLaunchBtn'),
     stopBtn: document.getElementById('mcStopBtn'),
     forceStopBtn: document.getElementById('mcForceStopBtn'),
+    deleteBtn: document.getElementById('mcDeleteBtn'),
     launchScriptInfo: document.getElementById('mcLaunchScriptInfo'),
     propertiesForm: document.getElementById('mcPropertiesForm'),
     savePropertiesBtn: document.getElementById('mcSavePropertiesBtn'),
@@ -36,7 +37,32 @@
     jvmArgsTextarea: document.getElementById('mcJvmArgsTextarea'),
     saveArgsBtn: document.getElementById('mcSaveArgsBtn'),
     argsSaveStatus: document.getElementById('mcArgsSaveStatus'),
+    whitelistList: document.getElementById('mcWhitelistList'),
+    opsList: document.getElementById('mcOpsList'),
+    bansList: document.getElementById('mcBansList'),
+    whitelistInput: document.getElementById('mcWhitelistInput'),
+    opsInput: document.getElementById('mcOpsInput'),
+    bansInput: document.getElementById('mcBansInput'),
+    whitelistAddBtn: document.getElementById('mcWhitelistAddBtn'),
+    opsAddBtn: document.getElementById('mcOpsAddBtn'),
+    bansAddBtn: document.getElementById('mcBansAddBtn'),
+    shareRow: document.getElementById('mcShareRow'),
+    shareAddress: document.getElementById('mcShareAddress'),
+    shareCopyBtn: document.getElementById('mcShareCopyBtn'),
+    shareNoHamachi: document.getElementById('mcShareNoHamachi'),
+    backupCreateBtn: document.getElementById('mcBackupCreateBtn'),
+    backupStatus: document.getElementById('mcBackupStatus'),
+    backupList: document.getElementById('mcBackupList'),
+    playersCount: document.getElementById('mcPlayersCount'),
+    playersRefreshBtn: document.getElementById('mcPlayersRefreshBtn'),
+    playersList: document.getElementById('mcPlayersList'),
   };
+
+  // Traduction (repli sur la clé si absente).
+  function tr(key, params) {
+    const v = window.AppSettings ? window.AppSettings.t(key, params) : null;
+    return v != null ? v : key;
+  }
 
   // Doit correspondre exactement à mcServerId() côté processus principal (main.js),
   // pour que les évènements de console/statut relayés soient bien rattachés au bon serveur.
@@ -87,7 +113,11 @@
   }
 
   function resetConsole() {
-    el.consoleOutput.innerHTML = '<div class="console-empty">Aucune sortie pour le moment. Lance le serveur pour voir la console ici.</div>';
+    const div = document.createElement('div');
+    div.className = 'console-empty';
+    div.textContent = tr('server.consoleEmpty');
+    el.consoleOutput.innerHTML = '';
+    el.consoleOutput.appendChild(div);
   }
 
   // Abonnement global unique : on filtre par serveur actuellement ouvert.
@@ -168,10 +198,10 @@
     clearStopWarning();
 
     if (server.launchScript) {
-      el.launchScriptInfo.textContent = `Script détecté : ${server.launchScript}`;
+      el.launchScriptInfo.textContent = tr('mc.scriptDetected', { script: server.launchScript });
     } else {
       el.launchBtn.disabled = true;
-      el.launchScriptInfo.textContent = 'Aucun script .ps1/.bat détecté dans ce dossier.';
+      el.launchScriptInfo.textContent = tr('mc.noScript');
     }
 
     const current = await window.api.mcGetServerStatus(server.path);
@@ -184,13 +214,231 @@
 
     const argsInfo = await window.api.mcReadLaunchArgs(server.path);
     el.jvmArgsTextarea.value = argsInfo.argsText.split('\n').filter(Boolean).join(' ');
-    el.jvmArgsHint.textContent = argsInfo.exists
-      ? 'Fichier user_jvm_args.txt détecté : ces arguments seront utilisés si ton script le référence (java @user_jvm_args.txt -jar server.jar nogui).'
-      : "Aucun user_jvm_args.txt pour l'instant : il sera créé à l'enregistrement. Assure-toi que ton script de lancement contient bien : java @user_jvm_args.txt -jar server.jar nogui";
+    el.jvmArgsHint.textContent = argsInfo.exists ? tr('mc.jvmExists') : tr('mc.jvmMissing');
+
+    loadAccessLists();
+    loadShareInfo();
+    loadBackups();
+    startPlayersPolling();
   }
+
+  // ---------- Joueurs en ligne ----------
+
+  function startPlayersPolling() {
+    stopPlayersPolling();
+    loadPlayers();
+    state.playersTimer = setInterval(loadPlayers, 15000);
+  }
+
+  function stopPlayersPolling() {
+    if (state.playersTimer) {
+      clearInterval(state.playersTimer);
+      state.playersTimer = null;
+    }
+  }
+
+  async function loadPlayers() {
+    if (!state.currentServer) return;
+    const res = await window.api.mcListPlayers(state.currentServer.path);
+    if (!res || !res.running) {
+      el.playersCount.textContent = tr('mc.playersOffline');
+      el.playersList.innerHTML = '';
+      return;
+    }
+    el.playersCount.textContent = tr('mc.playersOnline', { count: res.count });
+    el.playersList.innerHTML = '';
+    if (res.players && res.players.length) {
+      for (const p of res.players) {
+        const chip = document.createElement('span');
+        chip.className = 'mc-player-chip';
+        chip.textContent = p;
+        el.playersList.appendChild(chip);
+      }
+    } else {
+      const none = document.createElement('p');
+      none.className = 'hint-text';
+      none.textContent = tr('mc.playersNone');
+      el.playersList.appendChild(none);
+    }
+  }
+
+  el.playersRefreshBtn.addEventListener('click', () => { window.GameSounds?.toggle(); loadPlayers(); });
+
+  // ---------- Sauvegardes du monde ----------
+
+  function fmtBytes(b) {
+    if (!b) return '0 ' + tr('units.mb');
+    const gb = b / (1024 * 1024 * 1024);
+    if (gb >= 1) return gb.toFixed(1) + ' ' + tr('units.gb');
+    return (b / (1024 * 1024)).toFixed(0) + ' ' + tr('units.mb');
+  }
+
+  function renderBackups(list) {
+    el.backupList.innerHTML = '';
+    if (!list || list.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'hint-text';
+      p.textContent = tr('mc.backupsEmpty');
+      el.backupList.appendChild(p);
+      return;
+    }
+    const loc = window.AppSettings && window.AppSettings.getLang() === 'en' ? 'en-GB' : 'fr-FR';
+    for (const b of list) {
+      const row = document.createElement('div');
+      row.className = 'mc-backup-row';
+
+      const info = document.createElement('div');
+      info.className = 'mc-backup-info';
+      const nm = document.createElement('span');
+      nm.className = 'mc-backup-name';
+      nm.textContent = b.name;
+      const meta = document.createElement('span');
+      meta.className = 'mc-backup-meta';
+      meta.textContent = `${new Date(b.mtimeMs).toLocaleString(loc)} · ${fmtBytes(b.sizeBytes)}`;
+      info.appendChild(nm);
+      info.appendChild(meta);
+
+      const actions = document.createElement('div');
+      actions.className = 'mc-backup-actions';
+      const restore = document.createElement('button');
+      restore.className = 'secondary';
+      restore.textContent = tr('mc.backupRestore');
+      restore.addEventListener('click', async () => {
+        if (!confirm(tr('mc.backupRestoreConfirm', { name: b.name }))) return;
+        restore.disabled = true;
+        const res = await window.api.mcBackupRestore(state.currentServer.path, b.name);
+        if (res && res.backups) renderBackups(res.backups);
+        if (res) showStatus(el.backupStatus, res.ok ? tr('mc.backupRestored') : res.error);
+      });
+      const del = document.createElement('button');
+      del.className = 'danger';
+      del.textContent = tr('common.remove');
+      del.addEventListener('click', async () => {
+        if (!confirm(tr('mc.backupDeleteConfirm', { name: b.name }))) return;
+        const res = await window.api.mcBackupDelete(state.currentServer.path, b.name);
+        if (res && res.backups) renderBackups(res.backups);
+      });
+      actions.appendChild(restore);
+      actions.appendChild(del);
+
+      row.appendChild(info);
+      row.appendChild(actions);
+      el.backupList.appendChild(row);
+    }
+  }
+
+  async function loadBackups() {
+    if (!state.currentServer) return;
+    const list = await window.api.mcBackupList(state.currentServer.path);
+    renderBackups(list);
+  }
+
+  el.backupCreateBtn.addEventListener('click', async () => {
+    if (!state.currentServer) return;
+    window.GameSounds?.confirm();
+    el.backupCreateBtn.disabled = true;
+    showStatus(el.backupStatus, tr('mc.backupCreating'));
+    const res = await window.api.mcBackupCreate(state.currentServer.path);
+    el.backupCreateBtn.disabled = false;
+    if (res) {
+      if (res.backups) renderBackups(res.backups);
+      showStatus(el.backupStatus, res.ok ? tr('mc.backupDone') : res.error);
+    }
+  });
+
+  // ---------- Partage (Hamachi) ----------
+
+  async function loadShareInfo() {
+    if (!state.currentServer) return;
+    const info = await window.api.mcShareInfo(state.currentServer.path);
+    if (info && info.hamachiIp) {
+      el.shareAddress.textContent = `${info.hamachiIp}:${info.port}`;
+      el.shareRow.style.display = 'flex';
+      el.shareNoHamachi.style.display = 'none';
+    } else {
+      el.shareRow.style.display = 'none';
+      el.shareNoHamachi.style.display = 'block';
+    }
+  }
+
+  el.shareCopyBtn.addEventListener('click', async () => {
+    const text = el.shareAddress.textContent;
+    if (!text || text === '—') return;
+    try {
+      await navigator.clipboard.writeText(text);
+      window.GameSounds?.confirm();
+      const original = el.shareCopyBtn.textContent;
+      el.shareCopyBtn.textContent = tr('mc.shareCopied');
+      setTimeout(() => { el.shareCopyBtn.textContent = original; }, 1500);
+    } catch (e) { /* clipboard indisponible */ }
+  });
+
+  // ---------- Listes d'accès (whitelist / ops / bans) ----------
+
+  function renderAccessCol(container, list, entries) {
+    container.innerHTML = '';
+    if (!entries || entries.length === 0) {
+      const p = document.createElement('p');
+      p.className = 'hint-text';
+      p.textContent = tr('mc.accessEmpty');
+      container.appendChild(p);
+      return;
+    }
+    for (const e of entries) {
+      const row = document.createElement('div');
+      row.className = 'mc-access-row';
+      const name = document.createElement('span');
+      name.className = 'mc-access-name';
+      name.textContent = e.name || e.uuid || '?';
+      name.title = e.uuid || '';
+      const rm = document.createElement('button');
+      rm.className = 'secondary';
+      rm.textContent = tr('common.remove');
+      rm.addEventListener('click', async () => {
+        if (!state.currentServer) return;
+        window.GameSounds?.back();
+        rm.disabled = true;
+        const res = await window.api.mcAccessRemove(state.currentServer.path, list, e.name);
+        if (res && res.lists) renderAccessLists(res.lists);
+      });
+      row.appendChild(name);
+      row.appendChild(rm);
+      container.appendChild(row);
+    }
+  }
+
+  function renderAccessLists(lists) {
+    renderAccessCol(el.whitelistList, 'whitelist', lists.whitelist);
+    renderAccessCol(el.opsList, 'ops', lists.ops);
+    renderAccessCol(el.bansList, 'bans', lists.bans);
+  }
+
+  async function loadAccessLists() {
+    if (!state.currentServer) return;
+    const lists = await window.api.mcAccessList(state.currentServer.path);
+    if (lists) renderAccessLists(lists);
+  }
+
+  async function addAccess(list, input) {
+    if (!state.currentServer) return;
+    const name = input.value.trim();
+    if (!name) return;
+    input.value = '';
+    window.GameSounds?.confirm();
+    const res = await window.api.mcAccessAdd(state.currentServer.path, list, name);
+    if (res && res.lists) renderAccessLists(res.lists);
+  }
+
+  el.whitelistAddBtn.addEventListener('click', () => addAccess('whitelist', el.whitelistInput));
+  el.opsAddBtn.addEventListener('click', () => addAccess('ops', el.opsInput));
+  el.bansAddBtn.addEventListener('click', () => addAccess('bans', el.bansInput));
+  el.whitelistInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addAccess('whitelist', el.whitelistInput); });
+  el.opsInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addAccess('ops', el.opsInput); });
+  el.bansInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addAccess('bans', el.bansInput); });
 
   function closeDetail() {
     state.currentServer = null;
+    stopPlayersPolling();
     el.serverDetail.style.display = 'none';
     el.serverList.style.display = 'flex';
   }
@@ -200,13 +448,13 @@
     state.cardDots.clear();
 
     if (!state.rootFolder) {
-      el.emptyState.textContent = 'Sélectionne le dossier contenant tes serveurs Minecraft pour commencer.';
+      el.emptyState.textContent = tr('mc.empty');
       el.emptyState.style.display = 'flex';
       return;
     }
 
     if (state.servers.length === 0) {
-      el.emptyState.textContent = 'Aucun serveur Minecraft détecté dans ce dossier.';
+      el.emptyState.textContent = tr('mc.noServers');
       el.emptyState.style.display = 'flex';
       return;
     }
@@ -228,13 +476,13 @@
       const meta = document.createElement('div');
       meta.className = 'server-card-meta';
       meta.innerHTML = [
-        server.launchScript ? `Script : ${server.launchScript}` : 'Aucun script détecté',
-        server.hasProperties ? 'server.properties trouvé' : 'server.properties absent',
+        server.launchScript ? tr('mc.metaScript', { script: server.launchScript }) : tr('mc.metaNoScript'),
+        server.hasProperties ? tr('mc.propsFound') : tr('mc.propsAbsent'),
       ].join('<br>');
 
       card.appendChild(title);
       card.appendChild(meta);
-      card.addEventListener('click', () => { window.GameSounds?.navigate(); openDetail(server); });
+      card.addEventListener('click', () => { window.GameSounds?.serverItem(); openDetail(server); });
 
       el.serverList.appendChild(card);
 
@@ -249,7 +497,7 @@
     state.rootFolder = result.rootFolder;
     state.servers = result.servers;
 
-    el.rootFolderLabel.textContent = state.rootFolder || 'Aucun dossier sélectionné';
+    el.rootFolderLabel.textContent = state.rootFolder || tr('common.noFolder');
     renderServerList();
   }
 
@@ -262,23 +510,40 @@
   el.refreshBtn.addEventListener('click', () => { window.GameSounds?.toggle(); refreshList(); });
   el.backBtn.addEventListener('click', () => { window.GameSounds?.back(); closeDetail(); });
 
+  el.deleteBtn.addEventListener('click', async () => {
+    if (!state.currentServer) return;
+    const s = state.currentServer;
+    const confirmed = confirm(tr('mc.confirmDelete', { name: s.name }));
+    if (!confirmed) return;
+    window.GameSounds?.back();
+    el.deleteBtn.disabled = true;
+    const res = await window.api.mcDeleteServer(s.path);
+    el.deleteBtn.disabled = false;
+    if (res && res.ok) {
+      closeDetail();
+      refreshList();
+    } else {
+      el.errorBanner.textContent = `⚠ ${(res && res.error) || tr('common.deleteFailed')}`;
+      el.errorBanner.style.display = 'block';
+    }
+  });
+
   el.savePropertiesBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
     const updates = collectPropertiesUpdates();
     const values = await window.api.mcWriteProperties(state.currentServer.path, updates);
     renderPropertiesForm(values);
     window.GameSounds?.confirm();
-    showStatus(el.propertiesSaveStatus, 'Enregistré ✓');
+    showStatus(el.propertiesSaveStatus, tr('common.saved'));
   });
 
   el.saveArgsBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
     const argsInfo = await window.api.mcWriteLaunchArgs(state.currentServer.path, el.jvmArgsTextarea.value);
     el.jvmArgsTextarea.value = argsInfo.argsText.split('\n').filter(Boolean).join(' ');
-    el.jvmArgsHint.textContent =
-      'Fichier user_jvm_args.txt mis à jour : ces arguments seront utilisés si ton script le référence (java @user_jvm_args.txt -jar server.jar nogui).';
+    el.jvmArgsHint.textContent = tr('mc.jvmUpdated');
     window.GameSounds?.confirm();
-    showStatus(el.argsSaveStatus, 'Enregistré ✓');
+    showStatus(el.argsSaveStatus, tr('common.saved'));
   });
 
   el.launchBtn.addEventListener('click', async () => {
@@ -291,9 +556,9 @@
       state.currentServer.launchScriptType
     );
     if (!result.ok) {
-      el.launchScriptInfo.textContent = `Erreur au lancement : ${result.error}`;
+      el.launchScriptInfo.textContent = `${tr('server.launchErrorLabel')} ${result.error}`;
     } else {
-      el.launchScriptInfo.textContent = `Script lancé : ${state.currentServer.launchScript}`;
+      el.launchScriptInfo.textContent = tr('mc.scriptLaunched', { script: state.currentServer.launchScript });
     }
     // Le statut définitif (running / error / crashed) arrive de façon asynchrone
     // via l'évènement onServerStatus, capté plus haut.
@@ -310,17 +575,14 @@
     // forcer automatiquement — l'arrêt forcé ne sauvegarde pas les données,
     // donc la décision doit rester entre tes mains.
     state.stopTimeoutId = setTimeout(() => {
-      el.stopWarningBanner.textContent =
-        "⏳ Le serveur ne s'est pas encore arrêté après 25 secondes. S'il est bloqué (ex: demande d'appuyer sur Ctrl+C), tu peux utiliser « Forcer l'arrêt » ci-dessus — mais attention, les données non sauvegardées seront perdues.";
+      el.stopWarningBanner.textContent = tr('mc.stopWarning');
       el.stopWarningBanner.style.display = 'block';
     }, 25000);
   });
 
   el.forceStopBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
-    const confirmed = confirm(
-      "Forcer l'arrêt va tuer immédiatement le serveur (script + Java), sans lui laisser le temps de sauvegarder. Continuer ?"
-    );
+    const confirmed = confirm(tr('mc.forceStopConfirm'));
     if (!confirmed) return;
 
     window.GameSounds?.back();
@@ -354,6 +616,14 @@
     if (e.key === 'Enter') sendCommand();
   });
 
+  // Retraduit les libellés construits en JS quand la langue change.
+  document.addEventListener('gg-langchange', () => {
+    if (!state.loaded) return;
+    refreshList();
+    const emptyLine = el.consoleOutput.querySelector('.console-empty');
+    if (emptyLine) emptyLine.textContent = tr('server.consoleEmpty');
+  });
+
   window.MinecraftPanel = {
     onShow() {
       if (state.loaded) return;
@@ -369,6 +639,13 @@
     // Dossier racine Minecraft courant (null si non configuré).
     getRootFolder() {
       return state.rootFolder;
+    },
+    // Ouvre directement la fiche détail d'un serveur par son chemin (depuis le dashboard).
+    async openByPath(path) {
+      state.loaded = true;
+      await refreshList();
+      const server = state.servers.find((s) => s.path === path);
+      if (server) openDetail(server);
     },
   };
 })();

@@ -2,12 +2,30 @@
   box-sizing: border-box;
 }
 
+/* ---------------------------------------------------------------------------
+   Jetons de design (Phase F — refonte sobre / pro)
+   Palette centralisée : un accent bleu apaisé (au lieu du cyan néon), des
+   statuts désaturés sans halo lumineux, et un texte blanc cassé plutôt que
+   blanc pur pour un contraste plus doux et professionnel.
+   --------------------------------------------------------------------------- */
+:root {
+  --accent: #5b8fd6;          /* bleu sobre : actions, onglet actif, focus */
+  --accent-hover: #6d9ee0;
+  --accent-ink: #0b0c10;      /* texte posé SUR l'accent */
+  --ok: #4caf7d;              /* en marche / succès (vert apaisé) */
+  --warn: #d6a94c;            /* démarrage / avertissement */
+  --danger: #d15650;          /* arrêté / erreur (rouge désaturé) */
+  --danger-soft: #e0938d;     /* texte d'erreur */
+  --text: #e8eaf0;            /* texte principal (blanc cassé) */
+  --text-muted: #9a9ca6;      /* texte secondaire */
+}
+
 html, body {
   margin: 0;
   padding: 0;
   height: 100%;
   background: #0b0c10;
-  color: #ffffff;
+  color: var(--text);
   font-family: 'Segoe UI', system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
@@ -31,7 +49,8 @@ body {
 
 .topbar-title {
   font-size: 22px;
-  font-weight: bold;
+  font-weight: 600;
+  letter-spacing: 0.2px;
   white-space: nowrap;
 }
 
@@ -69,7 +88,7 @@ body {
 
 button {
   background: #1f2027;
-  color: #ffffff;
+  color: var(--text);
   border: none;
   border-radius: 6px;
   padding: 10px 16px;
@@ -92,6 +111,634 @@ button.secondary {
   flex: 1;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+}
+
+/* Zone principale (grille de jeux) : occupe l'espace restant à gauche du
+   panneau de détails. C'est elle qui porte l'overlay de chargement et l'état
+   vide, positionnés en absolute. */
+.games-main {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Panneau de détails du jeu sélectionné : pleine hauteur, ~20% de largeur,
+   collé à droite. Masqué tant qu'aucun jeu n'est sélectionné. */
+.game-detail {
+  width: 22%;
+  min-width: 260px;
+  max-width: 380px;
+  height: 100%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  background: #14151b;
+  border-left: 1px solid #22232b;
+  padding: 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.game-detail[hidden] {
+  display: none;
+}
+
+.game-detail-art {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 10px;
+  background: #101116;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-detail-art img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Logos / icônes : logo entier, centré, sans recadrage. */
+.game-detail-art img.contain {
+  object-fit: contain;
+  padding: 22px;
+  box-sizing: border-box;
+}
+
+.game-detail-art .fallback-letter {
+  font-size: 72px;
+  font-weight: bold;
+  color: #33343e;
+}
+
+.game-detail-name {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.game-detail-platform {
+  font-size: 13px;
+  color: #8a8b95;
+}
+
+.game-detail-spacer {
+  flex: 1;
+}
+
+.game-detail-play {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 16px;
+  padding: 14px;
+  border-radius: 8px;
+  width: 100%;
+}
+
+.game-detail-play:hover {
+  background: var(--accent-hover);
+}
+
+.game-detail-artwork {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.settings-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: #22232b;
+  color: #ffffff;
+  border: 1px solid #3a3b45;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 14px;
+  margin: 4px 0 6px;
+}
+
+/* ---------- Contrôles de mise à jour ---------- */
+
+.update-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 6px 0 4px;
+}
+
+/* ---------- Liste des joueurs Ark (RCON) ---------- */
+
+.ark-players-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ark-player-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1c1d24;
+  border: 1px solid #2a2b34;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.ark-player-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ark-player-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.ark-player-id {
+  font-size: 12px;
+  color: #8a8b95;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ark-player-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.ark-player-actions button {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+/* ---------- Tableau de bord unifié ---------- */
+
+.dash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 2px;
+}
+
+.dash-card {
+  background: #1c1d24;
+  border: 1px solid #2a2b34;
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dash-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-card-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.dash-badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #2a2b34;
+  color: #b9bac4;
+  flex-shrink: 0;
+}
+
+.dash-badge-minecraft { background: #1f3a2a; color: #7fdca0; }
+.dash-badge-ark { background: #14314a; color: #6fc0ff; }
+.dash-badge-steamcmd { background: #33302a; color: #d8c48a; }
+
+.dash-card-stats {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  font-size: 13px;
+  color: #8a8b95;
+  flex-wrap: wrap;
+}
+
+.dash-card-stats b {
+  color: #e7e8ee;
+  font-variant-numeric: tabular-nums;
+}
+
+.dash-status-text {
+  color: #b9bac4;
+}
+
+.dash-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dash-card-actions button {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.dash-autostart {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #b9bac4;
+  margin-left: auto;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dash-card-auto {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  border-top: 1px solid #24252e;
+}
+
+.dash-restart {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #b9bac4;
+}
+
+.dash-restart-input {
+  width: 56px;
+  background: #22232b;
+  color: #fff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-size: 13px;
+}
+
+/* ---------- Sous-onglets (onglet Minecraft groupé) ---------- */
+
+.subtabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px 0;
+  background: #14151b;
+  flex-shrink: 0;
+}
+
+.subtab {
+  /* Onglet inactif : discret, sans fond, texte atténué. */
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  border-radius: 6px 6px 0 0;
+  padding: 9px 16px;
+  font-size: 14px;
+}
+
+.subtab:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+.subtab.active {
+  /* Onglet actif : léger fond teinté à l'accent + texte accent en gras. */
+  color: var(--accent);
+  background: rgba(91, 143, 214, 0.16);
+  font-weight: 600;
+}
+
+.subview {
+  display: none;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.subview.active {
+  display: flex;
+}
+
+/* ---------- Tableau de bord : split Performance / Serveurs ---------- */
+
+.dashboard-split {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px 16px;
+}
+
+.dashboard-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.dashboard-col::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.dashboard-col-head {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8a8b95;
+  margin: 8px 2px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+/* Colonne Performance : tout visible d'un coup, aucun défilement. */
+.dashboard-perf {
+  overflow: hidden;
+}
+
+.perf-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.perf-row {
+  display: flex;
+  gap: 12px;
+  min-height: 0;
+}
+
+.perf-row > .perf-card {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Répartition verticale : la rangée CPU+Processus un peu plus haute, le reste équilibré. */
+.perf-layout > .perf-row { flex: 1.15; }
+.perf-layout > .perf-card { flex: 1; }
+
+/* Cartes perf compactes qui se partagent la hauteur sans déborder. */
+.perf-card {
+  margin: 0 !important;
+  padding: 10px 14px !important;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.perf-card h3 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Listes internes : défilent silencieusement si trop longues (rare), sans casser la mise en page. */
+.perf-proc-list,
+#perfDisksList,
+#perfGpuList,
+.perf-cores {
+  overflow-y: auto;
+  min-height: 0;
+  scrollbar-width: none;
+}
+.perf-proc-list::-webkit-scrollbar,
+#perfDisksList::-webkit-scrollbar,
+#perfGpuList::-webkit-scrollbar,
+.perf-cores::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* Colonne Serveurs : filtre + zone scrollable délimitée, sans barre de défilement. */
+.dashboard-servers {
+  overflow: hidden;
+  position: relative;
+}
+
+.dash-filter {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  flex-shrink: 0;
+}
+
+.dash-filter-btn {
+  background: #1c1d24;
+  color: #9a9ba5;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.dash-filter-btn:hover { color: #ffffff; }
+
+.dash-filter-btn.active {
+  color: #7fdca0;
+  background: rgba(127, 220, 160, 0.15);
+}
+
+.dash-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid #22232b;
+  border-radius: 10px;
+  padding: 10px;
+  /* Ombre interne en bas : suggère qu'il reste du contenu à faire défiler. */
+  box-shadow: inset 0 -22px 20px -20px rgba(0, 0, 0, 0.55);
+}
+
+.dash-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* ---------- Accès Minecraft (whitelist / ops / bans) ---------- */
+
+.mc-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 10px;
+}
+
+.mc-access-col h4 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+}
+
+.mc-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+  min-height: 24px;
+}
+
+.mc-access-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: #1c1d24;
+  border: 1px solid #2a2b34;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.mc-access-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.mc-access-row button {
+  padding: 4px 10px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.mc-access-add {
+  display: flex;
+  gap: 6px;
+}
+
+.mc-access-add input {
+  flex: 1;
+  min-width: 0;
+  background: #22232b;
+  color: #fff;
+  border: 1px solid #3a3b45;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+/* ---------- Partage Hamachi ---------- */
+
+.mc-share-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mc-share-address {
+  background: #101116;
+  border: 1px solid #2a2b34;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 15px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: #7fdca0;
+  user-select: all;
+}
+
+/* ---------- Joueurs en ligne (Minecraft) ---------- */
+
+.mc-players-count {
+  font-weight: 600;
+  color: #7fdca0;
+  margin-right: auto;
+  align-self: center;
+}
+
+.mc-players-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mc-player-chip {
+  background: #1c1d24;
+  border: 1px solid #2a2b34;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+/* ---------- Sauvegardes Minecraft ---------- */
+
+.mc-backup-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mc-backup-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #1c1d24;
+  border: 1px solid #2a2b34;
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.mc-backup-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mc-backup-name {
+  font-size: 13px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mc-backup-meta {
+  font-size: 12px;
+  color: #8a8b95;
+}
+
+.mc-backup-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.mc-backup-actions button {
+  padding: 6px 12px;
+  font-size: 13px;
 }
 
 .games-grid {
@@ -101,6 +748,17 @@ button.secondary {
   flex-wrap: wrap;
   align-content: flex-start;
   padding: 14px;
+  /* Barre de défilement masquée mais scroll toujours possible (molette,
+     clavier, manette). Firefox : scrollbar-width ; Chromium/Electron :
+     ::-webkit-scrollbar ci-dessous. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.games-grid::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .games-grid.locked {
@@ -155,8 +813,8 @@ button:disabled:hover {
 }
 
 .game-tile.selected {
-  border-color: #4cc2ff;
-  transform: scale(1.06);
+  border-color: var(--accent);
+  transform: scale(1.03);
   z-index: 1;
 }
 
@@ -179,11 +837,14 @@ button:disabled:hover {
 }
 
 .game-tile-icon img.contain {
-  width: auto;
-  height: auto;
-  max-width: 80%;
-  max-height: 80%;
+  /* Logos / icônes (Epic, Riot/LoL, Assassin's Creed, jeux ajoutés
+     manuellement…) : on affiche le logo ENTIER, centré et sans recadrage, avec
+     un peu d'air autour — plutôt que de l'agrandir et le rogner. */
+  width: 100%;
+  height: 100%;
   object-fit: contain;
+  padding: 16px;
+  box-sizing: border-box;
 }
 
 .game-tile-icon .fallback-letter {
@@ -233,7 +894,7 @@ button:disabled:hover {
   width: 40px;
   height: 40px;
   border: 4px solid #2c2d36;
-  border-top-color: #4cc2ff;
+  border-top-color: var(--accent);
   border-radius: 50%;
   margin: 0 auto;
   animation: spin 0.8s linear infinite;
@@ -442,7 +1103,7 @@ button:disabled:hover {
 }
 
 .cf-card.cf-card-downloading {
-  border-color: #4cc2ff;
+  border-color: var(--accent);
 }
 
 .cf-card-thumb {
@@ -568,10 +1229,10 @@ button.cf-dl-btn {
   flex-shrink: 0;
 }
 
-.status-stopped { background: #e0483e; }
-.status-running { background: #3ecf6e; box-shadow: 0 0 8px #3ecf6e; }
-.status-starting { background: #e0a83e; }
-.status-error { background: #e0483e; box-shadow: 0 0 8px #e0483e; }
+.status-stopped { background: #6b6d78; }
+.status-running { background: var(--ok); }
+.status-starting { background: var(--warn); }
+.status-error { background: var(--danger); }
 
 .server-card .status-dot {
   width: 9px;
@@ -669,7 +1330,7 @@ button.primary-highlight:hover {
 }
 
 .console-output .console-line-command {
-  color: #4cc2ff;
+  color: var(--accent);
 }
 
 /* ---------- Onglets d'application ---------- */
@@ -689,10 +1350,10 @@ button.primary-highlight:hover {
 
 .app-tab {
   background: transparent;
+  border: none;
   border-radius: 0;
   padding: 12px 18px;
   color: #888888;
-  border-bottom: 2px solid transparent;
 }
 
 .app-tab:hover {
@@ -701,8 +1362,8 @@ button.primary-highlight:hover {
 }
 
 .app-tab.active {
-  color: #4cc2ff;
-  border-bottom-color: #4cc2ff;
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .view {
@@ -787,7 +1448,7 @@ button.quick-cmd {
 
 .server-card:hover {
   background: #24252e;
-  border-color: #4cc2ff;
+  border-color: var(--accent);
 }
 
 .server-card h4 {
@@ -810,7 +1471,7 @@ button.quick-cmd {
 
 .back-btn {
   background: transparent;
-  color: #4cc2ff;
+  color: var(--accent);
   padding: 6px 0;
   margin-bottom: 12px;
 }
@@ -857,9 +1518,9 @@ button.quick-cmd {
 }
 
 .perf-big-number {
-  font-size: 36px;
+  font-size: 24px;
   font-weight: 700;
-  margin: 8px 0;
+  margin: 2px 0 6px;
 }
 
 .perf-bar-track {
@@ -874,13 +1535,13 @@ button.quick-cmd {
 .perf-bar-fill {
   height: 100%;
   width: 0%;
-  background: #4cc2ff;
+  background: var(--accent);
   border-radius: 5px;
   transition: width 0.4s ease, background 0.4s ease;
 }
 
-.perf-bar-fill.perf-warning { background: #ffb84c; }
-.perf-bar-fill.perf-critical { background: #e0483e; }
+.perf-bar-fill.perf-warning { background: var(--warn); }
+.perf-bar-fill.perf-critical { background: var(--danger); }
 
 .perf-cores {
   display: flex;
@@ -904,7 +1565,7 @@ button.quick-cmd {
   bottom: 0;
   left: 0;
   right: 0;
-  background: #4cc2ff;
+  background: var(--accent);
   transition: height 0.4s ease, background 0.4s ease;
 }
 
@@ -930,7 +1591,7 @@ button.quick-cmd {
 }
 
 .save-status {
-  color: #4cc2ff;
+  color: var(--accent);
   font-size: 12px;
   margin-left: 10px;
 }
@@ -1015,7 +1676,7 @@ label.full-width input {
 
 details summary {
   cursor: pointer;
-  color: #4cc2ff;
+  color: var(--accent);
   font-size: 14px;
   margin-bottom: 14px;
 }
@@ -1097,8 +1758,8 @@ details summary {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #0b0c10;
-  background: #4cc2ff;
+  color: var(--accent-ink);
+  background: var(--accent);
   border-radius: 4px;
   padding: 2px 6px;
 }
@@ -1181,6 +1842,249 @@ details summary {
 
 /* ---------- Variantes d'étiquettes de profil ---------- */
 
-.cf-badge-modpack { background: #4cc2ff; }
-.cf-badge-vanilla { background: #3ecf6e; }
+.cf-badge-modpack { background: var(--accent); }
+.cf-badge-vanilla { background: var(--ok); }
 .cf-badge-other { background: #8a8b95; }
+
+/* ---------- Performance : processus les plus gourmands ---------- */
+
+.perf-proc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.perf-proc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  padding: 4px 0;
+  border-bottom: 1px solid #22232b;
+}
+
+.perf-proc-row:last-child {
+  border-bottom: none;
+}
+
+.perf-proc-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #dddddd;
+}
+
+.perf-proc-stats {
+  color: #8a8b95;
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ---------- Icône de téléchargement (bouton install/serverpack en cours) ---------- */
+
+.cf-dl-icon {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  animation: cf-dl-bounce 0.8s ease-in-out infinite;
+}
+
+@keyframes cf-dl-bounce {
+  0%, 100% { transform: translateY(-2px); opacity: 0.5; }
+  50%      { transform: translateY(2px);  opacity: 1; }
+}
+
+/* ---------- Bouton paramètres (barre d'onglets) + réglages ---------- */
+
+.app-settings-btn {
+  background: transparent;
+  color: #8a8b95;
+  font-size: 16px;
+  padding: 12px 14px;
+  border-radius: 0;
+}
+.app-settings-btn:hover { background: #16171d; color: #ffffff; }
+
+.app-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  font-size: 14px;
+}
+
+.seg-control {
+  display: inline-flex;
+  border: 1px solid #3a3b45;
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg-control button {
+  background: #22232b;
+  color: #cccccc;
+  border-radius: 0;
+  padding: 8px 14px;
+  font-size: 13px;
+}
+.seg-control button:hover { background: #2c2d36; }
+.seg-control button.active { background: var(--accent); color: #0b0c10; font-weight: 600; }
+
+/* ---------- Thème clair (surcouche : n'affecte que data-theme="light") ---------- */
+
+:root[data-theme="light"] {
+  --accent: #1f7fc0;          /* accent bleu du thème clair, plus profond */
+  --accent-hover: #2b8fd0;
+  --accent-ink: #ffffff;
+  --text: #1b1c22;
+  --text-muted: #5c6169;
+}
+
+:root[data-theme="light"] body { background: #f3f4f7; color: #1b1c22; }
+
+:root[data-theme="light"] .topbar,
+:root[data-theme="light"] .bottombar { background: #e8eaee; color: #1b1c22; }
+
+:root[data-theme="light"] .app-tabs { background: #e2e4e9; border-bottom-color: #d3d6dc; }
+:root[data-theme="light"] .app-tab { color: #5c6169; }
+:root[data-theme="light"] .app-tab:hover { background: #d9dce2; color: #1b1c22; }
+:root[data-theme="light"] .app-tab.active { color: #1f7fc0; border-bottom-color: #1f7fc0; }
+:root[data-theme="light"] .app-settings-btn { color: #5c6169; }
+:root[data-theme="light"] .app-settings-btn:hover { background: #d9dce2; color: #1b1c22; }
+
+:root[data-theme="light"] .topbar-title,
+:root[data-theme="light"] .settings-title,
+:root[data-theme="light"] .modal-title,
+:root[data-theme="light"] .server-detail h2,
+:root[data-theme="light"] .detail-section h3 { color: #1b1c22; }
+:root[data-theme="light"] .topbar-filters label { color: #5c6169; }
+
+:root[data-theme="light"] .topbar-filters input,
+:root[data-theme="light"] .topbar-filters select,
+:root[data-theme="light"] .cf-toolbar input,
+:root[data-theme="light"] .cf-toolbar select,
+:root[data-theme="light"] .cf-version-select,
+:root[data-theme="light"] .console-command-row input,
+:root[data-theme="light"] .properties-form input[type="text"],
+:root[data-theme="light"] .properties-form input[type="number"],
+:root[data-theme="light"] .form-grid input,
+:root[data-theme="light"] .form-grid select,
+:root[data-theme="light"] label.full-width input,
+:root[data-theme="light"] .add-entry-row input,
+:root[data-theme="light"] .args-textarea,
+:root[data-theme="light"] .modal input[type="text"],
+:root[data-theme="light"] .cf-apikey-row input {
+  background: #ffffff; color: #1b1c22; border-color: #c9ccd3;
+}
+
+:root[data-theme="light"] button { background: #e4e6ea; color: #1b1c22; }
+:root[data-theme="light"] button:hover { background: #d5d8de; }
+:root[data-theme="light"] button:disabled:hover { background: #e4e6ea; }
+:root[data-theme="light"] button.secondary { background: #d3d6dc; }
+:root[data-theme="light"] .seg-control button { background: #eceef1; color: #3a3b45; }
+:root[data-theme="light"] .seg-control button:hover { background: #dfe2e7; }
+:root[data-theme="light"] .seg-control button.active { background: #1f7fc0; color: #ffffff; }
+:root[data-theme="light"] .back-btn { background: transparent; color: #1f7fc0; }
+
+:root[data-theme="light"] .detail-section,
+:root[data-theme="light"] .modal,
+:root[data-theme="light"] .settings-panel,
+:root[data-theme="light"] .cf-card,
+:root[data-theme="light"] .server-card,
+:root[data-theme="light"] .cf-profile-card,
+:root[data-theme="light"] .cf-download-status,
+:root[data-theme="light"] .game-tile {
+  background: #ffffff; border-color: #d8dbe0; color: #1b1c22;
+}
+:root[data-theme="light"] .game-tile:hover,
+:root[data-theme="light"] .server-card:hover { background: #f0f1f4; }
+:root[data-theme="light"] .game-tile-icon,
+:root[data-theme="light"] .cf-card-thumb,
+:root[data-theme="light"] .cf-profile-icon { background: #e7e9ed; }
+
+:root[data-theme="light"] .hint-text,
+:root[data-theme="light"] .settings-hint,
+:root[data-theme="light"] .folder-label,
+:root[data-theme="light"] .game-tile-platform,
+:root[data-theme="light"] .cf-card-meta,
+:root[data-theme="light"] .cf-profile-meta,
+:root[data-theme="light"] .platform-section-header { color: #5c6169; }
+:root[data-theme="light"] .cf-card-summary,
+:root[data-theme="light"] .cf-profile-dir,
+:root[data-theme="light"] .modal-path { color: #7c828b; }
+:root[data-theme="light"] .empty-state { color: #8a8b95; }
+:root[data-theme="light"] .game-tile-name,
+:root[data-theme="light"] .cf-card-name,
+:root[data-theme="light"] .cf-profile-name,
+:root[data-theme="light"] .settings-subtitle { color: #1b1c22; }
+
+:root[data-theme="light"] .perf-bar-track,
+:root[data-theme="light"] .perf-core-bar { background: #dfe2e7; }
+:root[data-theme="light"] .perf-proc-row { border-bottom-color: #e2e4e9; }
+:root[data-theme="light"] .perf-proc-name { color: #1b1c22; }
+:root[data-theme="light"] .perf-proc-stats { color: #5c6169; }
+
+:root[data-theme="light"] .overlay { background: rgba(243, 244, 247, 0.85); }
+:root[data-theme="light"] .overlay-title { color: #1b1c22; }
+
+:root[data-theme="light"] .cf-cat-panel,
+:root[data-theme="light"] .cf-cat-btn { background: #ffffff; color: #1b1c22; border-color: #c9ccd3; }
+
+/* ---------- Bouton paramètres à droite + texte ---------- */
+
+.app-settings-btn {
+  margin-left: auto;           /* pousse le bouton à droite de la barre d'onglets */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  border-radius: 0;
+}
+.app-settings-btn .gear { font-size: 16px; }
+
+/* Icône console pour l'onglet SteamCMD */
+.cmd-icon {
+  font-family: 'Consolas', 'Cascadia Code', monospace;
+  font-weight: 700;
+  background: #101116;
+  color: var(--ok);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 12px;
+  vertical-align: 1px;
+}
+.title-cmd-icon { font-size: 16px; padding: 2px 7px; }
+
+/* ---------- Filtre de l'onglet Profiles ---------- */
+
+.mcp-filter { display: inline-flex; gap: 6px; }
+.mcp-filter-btn {
+  background: #22232b;
+  color: #cccccc;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+.mcp-filter-btn:hover { background: #2c2d36; }
+.mcp-filter-btn.active { background: var(--accent); color: #0b0c10; font-weight: 600; }
+
+/* ---------- Icône de téléchargement en vert + barre terminée en vert ---------- */
+
+.cf-dl-icon { color: var(--ok); }
+.perf-bar-fill.cf-bar-done { background: var(--ok); }
+
+/* ---------- Thème clair : compléments ---------- */
+
+:root[data-theme="light"] .mcp-filter-btn { background: #eceef1; color: #3a3b45; }
+:root[data-theme="light"] .mcp-filter-btn:hover { background: #dfe2e7; }
+:root[data-theme="light"] .mcp-filter-btn.active { background: #1f7fc0; color: #ffffff; }
+:root[data-theme="light"] .cmd-icon { background: #e7e9ed; }
+
+/* ---------- Barre d'outils modpacks : boutons à la même hauteur que les champs ---------- */
+
+.cf-toolbar { align-items: center; }
+.cf-toolbar button { padding: 9px 12px; font-size: 13px; }

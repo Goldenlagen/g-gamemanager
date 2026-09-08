@@ -5,6 +5,8 @@ const fs = require('fs');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { execFile } = require('child_process');
+const https = require('https');
+const os = require('os');
 
 const { scanAllGames } = require('./scanners/scanAll');
 const manualGames = require('./scanners/manualGames');
@@ -18,6 +20,12 @@ const systemMonitor = require('./services/systemMonitor');
 const folderStats = require('./services/folderStats');
 const appSettings = require('./services/appSettings');
 const processManager = require('./servers/processManager');
+const rconClient = require('./servers/rconClient');
+const serverStats = require('./services/serverStats');
+const steamgriddb = require('./services/steamgriddb');
+const backups = require('./services/backups');
+const autoUpdater = require('./services/autoUpdater');
+const i18n = require('./services/i18n');
 
 const SYNC_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000; // resynchronisation par défaut : 1 semaine
 
@@ -93,12 +101,18 @@ function ensureTray() {
   tray = new Tray(icon);
   tray.setToolTip('G-GameManager');
 
+  buildTrayMenu();
+  tray.on('double-click', showWindow);
+}
+
+// Menu de la zone de notification, reconstruit à chaque changement de langue.
+function buildTrayMenu() {
+  if (!tray) return;
   const menu = Menu.buildFromTemplate([
-    { label: 'Ouvrir', click: showWindow },
-    { label: 'Quitter', click: () => { isQuitting = true; app.quit(); } },
+    { label: i18n.t('tray.open'), click: showWindow },
+    { label: i18n.t('tray.quit'), click: () => { isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(menu);
-  tray.on('double-click', showWindow);
 }
 
 function showWindow() {
@@ -107,7 +121,26 @@ function showWindow() {
   mainWindow.focus();
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  rebuildRestartSchedules();
+
+  // Mise à jour automatique (Phase E) : on relaie les événements vers le
+  // renderer. Inerte tant que l'hébergement du flux n'est pas branché.
+  autoUpdater.init((channel, payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(channel, payload);
+  });
+
+  // Auto-démarrage des serveurs marqués, une fois l'appli stabilisée.
+  setTimeout(() => { autoStartEnabledServers(); }, 4000);
+
+  // Vérification silencieuse des mises à jour, seulement si l'utilisateur ne
+  // l'a pas désactivée (et si le flux est configuré côté build).
+  setTimeout(() => {
+    const settings = appSettings.getSettings();
+    if (settings.autoUpdateCheck !== false) autoUpdater.checkOnStartup();
+  }, 8000);
+});
 
 app.on('window-all-closed', () => {
   // On garde l'appli active dans la zone de notification tant que l'utilisateur
@@ -125,12 +158,24 @@ app.on('activate', () => {
 
 // ---- IPC ----
 
+// Applique les jaquettes personnalisées (SteamGridDB) : la surcharge devient la
+// boxArtUrl du jeu, donc la tuile et le panneau l'utilisent automatiquement.
+function applyArtworkOverrides(games) {
+  const overrides = steamgriddb.getOverrides();
+  if (!overrides || Object.keys(overrides).length === 0) return games;
+  for (const g of games) {
+    const key = g.platform + ':' + g.name;
+    if (overrides[key]) g.boxArtUrl = overrides[key];
+  }
+  return games;
+}
+
 ipcMain.handle('scan-games', async (_evt, forceRescan) => {
   const cache = loadCache();
   const isFresh = !!cache && Date.now() - cache.lastSync < SYNC_INTERVAL_MS;
 
   if (!forceRescan && isFresh) {
-    return { games: cache.games, lastSync: cache.lastSync, fromCache: true };
+    return { games: applyArtworkOverrides(cache.games), lastSync: cache.lastSync, fromCache: true };
   }
 
   const rawGames = await scanAllGames();
@@ -140,7 +185,18 @@ ipcMain.handle('scan-games', async (_evt, forceRescan) => {
   }));
 
   const saved = saveCache(games);
-  return { games: saved.games, lastSync: saved.lastSync, fromCache: false };
+  return { games: applyArtworkOverrides(saved.games), lastSync: saved.lastSync, fromCache: false };
+});
+
+// ---- SteamGridDB (jaquettes) ----
+
+ipcMain.handle('sgdb-status', () => ({ hasKey: steamgriddb.hasKey() }));
+
+ipcMain.handle('sgdb-fetch', (_evt, gameKey, gameName) => steamgriddb.fetchAndApply(gameKey, gameName));
+
+ipcMain.handle('sgdb-clear', (_evt, gameKey) => {
+  steamgriddb.clearOverride(gameKey);
+  return { ok: true };
 });
 
 ipcMain.handle('launch-game', (_evt, game) => {
@@ -163,11 +219,11 @@ ipcMain.handle('get-manual-games', () => manualGames.loadEntries());
 
 ipcMain.handle('add-manual-game', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choisir un exécutable ou un raccourci',
+    title: i18n.t('dlg.chooseExe'),
     properties: ['openFile'],
     filters: [
-      { name: 'Exécutables et raccourcis', extensions: ['exe', 'lnk'] },
-      { name: 'Tous les fichiers', extensions: ['*'] },
+      { name: i18n.t('dlg.filterExe'), extensions: ['exe', 'lnk'] },
+      { name: i18n.t('dlg.filterAll'), extensions: ['*'] },
     ],
   });
 
@@ -218,7 +274,7 @@ ipcMain.handle('mc-get-root-folder', () => minecraftManager.getRootFolder());
 
 ipcMain.handle('mc-choose-root-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choisir le dossier contenant vos serveurs Minecraft',
+    title: i18n.t('dlg.chooseMcFolder'),
     properties: ['openDirectory'],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
@@ -248,8 +304,8 @@ function mcServerId(serverPath) {
   return `mc:${serverPath}`;
 }
 
-ipcMain.handle('mc-launch-server', (_evt, serverPath, launchScript, launchScriptType) => {
-  if (!launchScript) return { ok: false, error: 'Aucun script de lancement détecté pour ce serveur.' };
+function launchMinecraftServer(serverPath, launchScript, launchScriptType) {
+  if (!launchScript) return { ok: false, error: i18n.t('err.mcNoLaunchScript') };
 
   const scriptPath = path.join(serverPath, launchScript);
   const command = launchScriptType === 'ps1' ? 'powershell.exe' : 'cmd.exe';
@@ -259,7 +315,11 @@ ipcMain.handle('mc-launch-server', (_evt, serverPath, launchScript, launchScript
       : ['/c', scriptPath];
 
   return processManager.startProcess(mcServerId(serverPath), command, args, { cwd: serverPath });
-});
+}
+
+ipcMain.handle('mc-launch-server', (_evt, serverPath, launchScript, launchScriptType) =>
+  launchMinecraftServer(serverPath, launchScript, launchScriptType)
+);
 
 ipcMain.handle('mc-stop-server', (_evt, serverPath) =>
   processManager.stopProcess(mcServerId(serverPath), { graceful: true })
@@ -272,6 +332,196 @@ ipcMain.handle('mc-get-server-status', (_evt, serverPath) => processManager.getS
 ipcMain.handle('mc-send-command', (_evt, serverPath, command) =>
   processManager.sendCommand(mcServerId(serverPath), command)
 );
+
+// Joueurs en ligne : envoie la commande « list » et lit la réponse dans le
+// tampon de console pour un décompte fiable (nom + nombre).
+ipcMain.handle('mc-list-players', async (_evt, serverPath) => {
+  const id = mcServerId(serverPath);
+  if (!processManager.isRunning(id)) return { ok: true, running: false, count: 0, players: [] };
+
+  processManager.sendCommand(id, 'list');
+  await new Promise((r) => setTimeout(r, 700));
+
+  const lines = processManager.getState(id).logLines || [];
+  let count = 0;
+  let players = [];
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(/There are (\d+)\s*(?:of a max of|\/)\s*\d+\s*players online:?\s*(.*)/i);
+    if (m) {
+      count = Number(m[1]) || 0;
+      const names = (m[2] || '').trim();
+      players = names ? names.split(/,\s*/).map((s) => s.trim()).filter(Boolean) : [];
+      break;
+    }
+  }
+  return { ok: true, running: true, count, players };
+});
+
+// Supprime définitivement un serveur Minecraft (dossier de plus haut niveau sous
+// la racine, même si le script est dans un sous-dossier). On arrête d'abord tout
+// processus, et on vérifie que la cible est bien à l'intérieur de la racine.
+ipcMain.handle('mc-delete-server', (_evt, serverPath) => {
+  const root = minecraftManager.getRootFolder();
+  if (!root) return { ok: false, error: i18n.t('err.mcRootNotFound') };
+  try {
+    processManager.forceStop(mcServerId(serverPath));
+  } catch (e) {
+    /* pas grave si aucun process */
+  }
+  const resolvedRoot = path.resolve(root);
+  const rel = path.relative(resolvedRoot, path.resolve(serverPath));
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel) {
+    return { ok: false, error: i18n.t('err.pathOutsideRoot') };
+  }
+  const topFolder = path.join(resolvedRoot, rel.split(path.sep)[0]);
+  try {
+    fs.rmSync(topFolder, { recursive: true, force: true });
+    return { ok: true, deleted: topFolder };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+// ---- Listes d'accès Minecraft : whitelist / ops / bans ----
+
+// Résout le UUID d'un pseudo via l'API publique Mojang (best-effort, hors-ligne).
+function mojangUuid(name) {
+  return new Promise((resolve) => {
+    https
+      .get('https://api.mojang.com/users/profiles/minecraft/' + encodeURIComponent(name), (res) => {
+        if (res.statusCode !== 200) { res.resume(); return resolve(null); }
+        let raw = '';
+        res.on('data', (c) => (raw += c));
+        res.on('end', () => {
+          try {
+            const j = JSON.parse(raw);
+            if (j && j.id) {
+              resolve(j.id.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, '$1-$2-$3-$4-$5'));
+            } else resolve(null);
+          } catch (e) { resolve(null); }
+        });
+      })
+      .on('error', () => resolve(null));
+  });
+}
+
+const MC_ACCESS_ADD_CMD = { whitelist: 'whitelist add', ops: 'op', bans: 'ban' };
+const MC_ACCESS_REMOVE_CMD = { whitelist: 'whitelist remove', ops: 'deop', bans: 'pardon' };
+
+// Adresse Hamachi locale (pour partager un serveur sans configuration réseau).
+function getHamachiIp() {
+  const ifaces = os.networkInterfaces();
+  const isV4 = (a) => a && (a.family === 'IPv4' || a.family === 4) && !a.internal;
+  // 1) adaptateur nommé « Hamachi »
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    if (/hamachi/i.test(name)) {
+      const v4 = (addrs || []).find(isV4);
+      if (v4) return v4.address;
+    }
+  }
+  // 2) repli : toute adresse dans la plage Hamachi 25.x.x.x
+  for (const addrs of Object.values(ifaces)) {
+    const v4 = (addrs || []).find((a) => isV4(a) && /^25\./.test(a.address));
+    if (v4) return v4.address;
+  }
+  return null;
+}
+
+ipcMain.handle('mc-share-info', (_evt, serverPath) => {
+  let port = '25565';
+  try {
+    const props = minecraftManager.readServerProperties(serverPath);
+    if (props.values && props.values['server-port']) port = String(props.values['server-port']);
+  } catch (e) { /* défaut 25565 */ }
+  return { hamachiIp: getHamachiIp(), port };
+});
+
+// ---- Sauvegardes de mondes Minecraft ----
+
+function mcWorldFolders(serverPath) {
+  let level = 'world';
+  try {
+    const props = minecraftManager.readServerProperties(serverPath);
+    if (props.values && props.values['level-name']) level = props.values['level-name'];
+  } catch (e) { /* défaut "world" */ }
+  return [level, level + '_nether', level + '_the_end'];
+}
+
+ipcMain.handle('mc-backup-list', (_evt, serverPath) => backups.listBackups(serverPath));
+
+ipcMain.handle('mc-backup-create', async (_evt, serverPath) => {
+  const id = mcServerId(serverPath);
+  const running = processManager.isRunning(id);
+  // Serveur en cours : on fige les sauvegardes du monde le temps du zip.
+  if (running) {
+    processManager.sendCommand(id, 'save-off');
+    processManager.sendCommand(id, 'save-all flush');
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  const res = await backups.createBackup(serverPath, mcWorldFolders(serverPath));
+  if (running) processManager.sendCommand(id, 'save-on');
+
+  if (!res.ok) {
+    const msg = res.error === 'noWorld' ? i18n.t('backup.noWorld') : i18n.t('backup.failed', { error: res.error });
+    return { ok: false, error: msg, backups: backups.listBackups(serverPath) };
+  }
+  return { ok: true, name: res.name, backups: backups.listBackups(serverPath) };
+});
+
+ipcMain.handle('mc-backup-restore', async (_evt, serverPath, name) => {
+  if (processManager.isRunning(mcServerId(serverPath))) {
+    return { ok: false, error: i18n.t('backup.restoreRunning'), backups: backups.listBackups(serverPath) };
+  }
+  const res = await backups.restoreBackup(serverPath, name);
+  if (!res.ok) {
+    const msg = res.error === 'notFound' ? i18n.t('backup.notFound') : i18n.t('backup.failed', { error: res.error });
+    return { ok: false, error: msg, backups: backups.listBackups(serverPath) };
+  }
+  return { ok: true, backups: backups.listBackups(serverPath) };
+});
+
+ipcMain.handle('mc-backup-delete', (_evt, serverPath, name) => {
+  backups.deleteBackup(serverPath, name);
+  return { ok: true, backups: backups.listBackups(serverPath) };
+});
+
+ipcMain.handle('mc-access-list', (_evt, serverPath) => minecraftManager.readAccessLists(serverPath));
+
+ipcMain.handle('mc-access-add', async (_evt, serverPath, list, name) => {
+  name = String(name || '').trim();
+  if (!name || !MC_ACCESS_ADD_CMD[list]) return { ok: false };
+
+  const id = mcServerId(serverPath);
+  if (processManager.isRunning(id)) {
+    // Serveur en cours : la console gère la résolution du UUID et met à jour les fichiers.
+    processManager.sendCommand(id, `${MC_ACCESS_ADD_CMD[list]} ${name}`);
+    await new Promise((r) => setTimeout(r, 700));
+  } else {
+    // Serveur arrêté : on édite le JSON directement (UUID via Mojang, best-effort).
+    const uuid = (await mojangUuid(name)) || '';
+    let entry;
+    if (list === 'ops') entry = { uuid, name, level: 4, bypassesPlayerLimit: false };
+    else if (list === 'bans') {
+      entry = { uuid, name, created: new Date().toISOString(), source: 'G-GameManager', expires: 'forever', reason: 'Banned by an operator' };
+    } else entry = { uuid, name };
+    minecraftManager.addToAccessFile(serverPath, list, entry);
+  }
+  return { ok: true, lists: minecraftManager.readAccessLists(serverPath) };
+});
+
+ipcMain.handle('mc-access-remove', async (_evt, serverPath, list, name) => {
+  name = String(name || '').trim();
+  if (!name || !MC_ACCESS_REMOVE_CMD[list]) return { ok: false };
+
+  const id = mcServerId(serverPath);
+  if (processManager.isRunning(id)) {
+    processManager.sendCommand(id, `${MC_ACCESS_REMOVE_CMD[list]} ${name}`);
+    await new Promise((r) => setTimeout(r, 700));
+  } else {
+    minecraftManager.removeFromAccessFile(serverPath, list, name);
+  }
+  return { ok: true, lists: minecraftManager.readAccessLists(serverPath) };
+});
 
 // ---- CurseForge (modpacks) ----
 
@@ -287,6 +537,8 @@ ipcMain.handle('cf-download-serverpack', (_evt, opts) => curseforgeManager.downl
 
 ipcMain.handle('cf-get-installed-serverpacks', () => minecraftManager.getInstalledServerpacks());
 
+ipcMain.handle('cf-get-mod-logo', (_evt, modId) => curseforgeManager.getModLogo(modId));
+
 // ---- Profils Minecraft (launcher officiel) ----
 
 ipcMain.handle('mcp-list-profiles', () => minecraftLauncher.listProfiles());
@@ -298,9 +550,99 @@ ipcMain.handle('mcp-open-path', (_evt, targetPath) => {
   return { ok: true };
 });
 
-ipcMain.handle('mcp-play-profile', (_evt, profileKey) => minecraftLauncher.playProfile(profileKey));
+// Récupère l'AppID (AUMID) du launcher Minecraft via Get-StartApps — fonctionne
+// aussi bien pour la version Microsoft Store que pour la version classique
+// (toutes deux listées dans le dossier Applications de Windows).
+function findLauncherAppId() {
+  return new Promise((resolve) => {
+    const ps = [
+      "$a = Get-StartApps | Where-Object { $_.Name -eq 'Minecraft Launcher' };",
+      "if (-not $a) { $a = Get-StartApps | Where-Object { $_.Name -match 'Minecraft' -and $_.Name -match 'Launcher' } };",
+      "if (-not $a) { $a = Get-StartApps | Where-Object { $_.Name -match 'Minecraft' } };",
+      '$a | Select-Object -First 1 -ExpandProperty AppID',
+    ].join(' ');
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', ps],
+      { windowsHide: true, timeout: 15000 },
+      (err, stdout) => {
+        if (err) return resolve(null);
+        const appId = String(stdout || '').trim().split(/\r?\n/)[0].trim();
+        resolve(appId || null);
+      }
+    );
+  });
+}
+
+// Lance une application par son AppID/AUMID via le dossier Applications de Windows.
+function launchByAppId(appId) {
+  return new Promise((resolve) => {
+    // explorer.exe interprète "shell:AppsFolder\<AppID>" comme l'ouverture de l'app.
+    // Il renvoie souvent un code non nul même en cas de succès : on ne s'y fie pas.
+    execFile('explorer.exe', ['shell:AppsFolder\\' + appId], { windowsHide: true }, () => {});
+    setTimeout(resolve, 400);
+  });
+}
+
+ipcMain.handle('mcp-play-profile', async (_evt, profileKey) => {
+  const r = minecraftLauncher.playProfile(profileKey);
+  if (!r.ok) return r;
+
+  // 1) Launcher classique (.exe) si on l'a trouvé sur le disque.
+  if (r.exe) {
+    try {
+      const errStr = await shell.openPath(r.exe);
+      if (!errStr) return { ok: true, launched: true, method: 'exe' };
+    } catch (e) {
+      /* on tente les voies suivantes */
+    }
+  }
+
+  // 2) Via l'AppID (Store OU classique) découvert par Get-StartApps.
+  try {
+    const appId = await findLauncherAppId();
+    if (appId) {
+      await launchByAppId(appId);
+      return { ok: true, launched: true, method: 'appid', appId };
+    }
+  } catch (e) {
+    /* ignore */
+  }
+
+  // 3) Dernier recours : AUMID connu du launcher unifié Microsoft Store.
+  try {
+    await launchByAppId('Microsoft.4297127D64EC6_8wekyb3d8bbwe!Minecraft');
+    return { ok: true, launched: true, method: 'store-fallback' };
+  } catch (e) {
+    /* ignore */
+  }
+
+  return {
+    ok: true,
+    launched: false,
+    message: i18n.t('mcp.launcherNotFound'),
+  };
+});
 
 ipcMain.handle('mcp-uninstall-profile', (_evt, profileKey) => minecraftLauncher.uninstallProfile(profileKey));
+
+// Lancement rapide (hors-ligne, sans le launcher officiel). Le service renvoie
+// un code d'erreur ; on le traduit ici, à la frontière IPC.
+ipcMain.handle('mcp-quick-launch-profile', async (_evt, profileKey) => {
+  const r = await minecraftLauncher.quickLaunchProfile(profileKey);
+  if (r.ok) return r;
+
+  const messages = {
+    profileNotFound: i18n.t('mcl.profileNotFound'),
+    noVersion: i18n.t('mcl.qlNoVersion'),
+    versionJson: i18n.t('mcl.qlVersionJsonFail', { id: r.versionId, error: r.detail }),
+    clientJar: i18n.t('mcl.qlClientJarMissing', { path: r.clientJar }),
+    noJava: i18n.t('mcl.qlNoJava'),
+    natives: i18n.t('mcl.qlNativesFail', { error: r.detail }),
+    spawn: i18n.t('mcl.qlSpawnFail', { error: r.detail }),
+  };
+  return { ok: false, error: messages[r.error] || i18n.t('mcl.qlSpawnFail', { error: r.error }) };
+});
 
 // ---- Serveur Ark ----
 
@@ -308,7 +650,7 @@ ipcMain.handle('ark-get-root-folder', async () => (await arkManager.getOrAutoDet
 
 ipcMain.handle('ark-choose-root-folder', async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
-    title: 'Choisir le dossier contenant vos serveurs Ark',
+    title: i18n.t('dlg.chooseArkFolder'),
     properties: ['openDirectory'],
   });
   if (result.canceled || result.filePaths.length === 0) return null;
@@ -343,7 +685,7 @@ function launchArkServerProcess(serverPath, config) {
   let args;
   try {
     exePath = arkManager.findServerExecutable(serverPath);
-    if (!exePath) throw new Error("Exécutable du serveur Ark introuvable dans ShooterGame\\Binaries\\Win64.");
+    if (!exePath) throw new Error(i18n.t('err.arkExeNotFound'));
     args = arkManager.buildLaunchArgs(config);
   } catch (e) {
     return { ok: false, error: e.message };
@@ -360,11 +702,55 @@ ipcMain.handle('ark-stop-server', (_evt, serverPath) =>
 
 ipcMain.handle('ark-force-stop-server', (_evt, serverPath) => processManager.forceStop(arkServerId(serverPath)));
 
+// Supprime définitivement un serveur Ark (le dossier du serveur lui-même, ex:
+// <racine>/ARK Survival Ascended/MonServeur). Arrête d'abord tout processus et
+// vérifie que la cible est bien à l'intérieur de la racine (et plus profonde).
+ipcMain.handle('ark-delete-server', async (_evt, serverPath) => {
+  const { rootFolder } = await arkManager.getOrAutoDetectRootFolder();
+  if (!rootFolder) return { ok: false, error: i18n.t('err.arkRootNotFound') };
+  try {
+    processManager.forceStop(arkServerId(serverPath));
+  } catch (e) {
+    /* ignore */
+  }
+  const resolvedRoot = path.resolve(rootFolder);
+  const target = path.resolve(serverPath);
+  const rel = path.relative(resolvedRoot, target);
+  if (rel.startsWith('..') || path.isAbsolute(rel) || !rel) {
+    return { ok: false, error: i18n.t('err.pathOutsideRoot') };
+  }
+  try {
+    fs.rmSync(target, { recursive: true, force: true });
+    return { ok: true, deleted: target };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
 ipcMain.handle('ark-get-server-status', (_evt, serverPath) => processManager.getState(arkServerId(serverPath)));
 
 ipcMain.handle('ark-send-command', (_evt, serverPath, command) =>
   processManager.sendCommand(arkServerId(serverPath), command)
 );
+
+// Commande RCON Ark : contrairement à la console stdin, RCON est le vrai canal
+// d'administration des serveurs Ark (liste des joueurs, kick/ban, save…).
+ipcMain.handle('ark-rcon', async (_evt, serverPath, command) => {
+  const info = arkManager.getRconInfo(serverPath);
+  if (!info.enabled) return { ok: false, error: i18n.t('rcon.disabled') };
+  if (!info.password) return { ok: false, error: i18n.t('rcon.noPassword') };
+
+  const r = await rconClient.rconCommand(info.host, info.port, info.password, command);
+  if (r.ok) return r;
+
+  const messages = {
+    refused: i18n.t('rcon.refused'),
+    timeout: i18n.t('rcon.timeout'),
+    badPassword: i18n.t('rcon.badPassword'),
+    socket: i18n.t('rcon.socket', { error: r.detail }),
+  };
+  return { ok: false, error: messages[r.error] || i18n.t('rcon.socket', { error: r.error }) };
+});
 
 ipcMain.handle('ark-generate-script', (_evt, serverPath, config) => {
   try {
@@ -420,9 +806,19 @@ const ARK_EDITION_FOLDER_NAMES = {
   evolved: 'ARK Survival Evolved',
 };
 
+// Assainit un nom de dossier de serveur : espaces et caractères spéciaux → « _ »
+// (les chemins avec espaces cassent certains scripts de lancement).
+function sanitizeFolderName(name) {
+  return String(name || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80) || 'server';
+}
+
 function arkServerPath(parentFolder, edition, folderName) {
   const editionFolder = ARK_EDITION_FOLDER_NAMES[edition] || 'Autre';
-  return path.join(parentFolder, editionFolder, folderName);
+  return path.join(parentFolder, editionFolder, sanitizeFolderName(folderName));
 }
 
 /**
@@ -440,7 +836,7 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
   } = options;
 
   if (!steamcmdManager.isInstalled()) {
-    return { ok: false, step: 'steamcmd', error: "SteamCMD n'est pas installé. Utilise le bouton de téléchargement du panneau SteamCMD d'abord." };
+    return { ok: false, step: 'steamcmd', error: i18n.t('err.steamcmdNotInstalled') };
   }
 
   // SteamCMD ne peut pas tourner deux fois simultanément depuis le même dossier
@@ -453,16 +849,16 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
     return {
       ok: false,
       step: 'steamcmd',
-      error: "SteamCMD est déjà lancé (panneau ci-dessus). Ferme cette session (bouton « Arrêter ») avant de créer un nouveau serveur : SteamCMD ne peut pas être utilisé deux fois en même temps.",
+      error: i18n.t('err.steamcmdAlreadyRunning'),
     };
   }
 
   const appId = ARK_APP_IDS[edition];
   if (!appId) {
-    return { ok: false, step: 'validation', error: 'Édition Ark inconnue (Ascended/Evolved).' };
+    return { ok: false, step: 'validation', error: i18n.t('err.arkUnknownEdition') };
   }
   if (!parentFolder || !folderName || !folderName.trim()) {
-    return { ok: false, step: 'validation', error: 'Dossier parent ou nom de serveur manquant.' };
+    return { ok: false, step: 'validation', error: i18n.t('err.arkMissingParams') };
   }
 
   // Rangé automatiquement dans un sous-dossier "ARK Survival Ascended" ou
@@ -471,13 +867,13 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
   const serverPath = arkServerPath(parentFolder, edition, folderName.trim());
 
   if (fs.existsSync(serverPath) && fs.readdirSync(serverPath).length > 0) {
-    return { ok: false, step: 'validation', error: `Le dossier "${folderName.trim()}" existe déjà et n'est pas vide.` };
+    return { ok: false, step: 'validation', error: i18n.t('err.arkFolderExists', { name: sanitizeFolderName(folderName) }) };
   }
 
   try {
     fs.mkdirSync(serverPath, { recursive: true });
   } catch (e) {
-    return { ok: false, step: 'folder', error: `Impossible de créer le dossier : ${e.message}` };
+    return { ok: false, step: 'folder', error: i18n.t('err.arkCreateFolder', { error: e.message }) };
   }
 
   // Étape 1 : installation via SteamCMD, en mode non interactif (une seule
@@ -503,7 +899,7 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
     return {
       ok: false,
       step: 'install',
-      error: finalInstallState.errorMessage || "L'installation via SteamCMD a échoué ou a été interrompue.",
+      error: finalInstallState.errorMessage || i18n.t('err.arkInstallFailed'),
     };
   }
 
@@ -512,7 +908,7 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
     return {
       ok: false,
       step: 'install',
-      error: "L'installation semble incomplète : aucun exécutable serveur trouvé une fois SteamCMD terminé.",
+      error: i18n.t('err.arkInstallIncomplete'),
     };
   }
 
@@ -532,12 +928,12 @@ ipcMain.handle('ark-create-and-launch-server', async (_evt, options) => {
     return {
       ok: false,
       step: 'install',
-      error:
-        `Incohérence détectée : tu as demandé l'édition "${edition}" mais l'exécutable installé ` +
-        `("${path.basename(installedExe)}") correspond à "${installedEdition}". SteamCMD a probablement ` +
-        `installé les mauvais fichiers à cause d'un cache corrompu — utilise le bouton ` +
-        `"🔄 Réinitialiser SteamCMD" dans le panneau ci-dessus, puis retélécharge SteamCMD et réessaie. ` +
-        `Le dossier "${folderName.trim()}" a été créé mais n'a volontairement pas été lancé.`,
+      error: i18n.t('err.arkEditionMismatch', {
+        edition,
+        exe: path.basename(installedExe),
+        installedEdition,
+        folder: sanitizeFolderName(folderName),
+      }),
     };
   }
 
@@ -591,7 +987,7 @@ ipcMain.handle('steamcmd-launch', () => {
   if (processManager.isAnyRunningWithPrefix('ark-install:')) {
     return {
       ok: false,
-      error: "Une installation automatique via l'assistant « Créer un serveur » est déjà en cours en arrière-plan. SteamCMD ne peut pas être lancé deux fois en même temps : attends la fin de l'installation avant de démarrer une session manuelle.",
+      error: i18n.t('err.steamcmdInstallRunning'),
     };
   }
   return steamcmdManager.launch();
@@ -614,3 +1010,262 @@ ipcMain.handle('perf-get-snapshot', () => systemMonitor.getSnapshot());
 ipcMain.handle('settings-get', () => appSettings.getSettings());
 
 ipcMain.handle('settings-set', (_evt, key, value) => appSettings.setSetting(key, value));
+
+// ---- Langue ----
+
+// Le renderer (appsettings.js) synchronise la langue courante ici, au démarrage
+// et à chaque changement, pour que les libellés natifs (zone de notification,
+// boîtes de dialogue) et les messages d'erreur renvoyés soient dans la bonne langue.
+ipcMain.handle('set-lang', (_evt, lang) => {
+  const applied = i18n.setLang(lang);
+  buildTrayMenu();
+  return applied;
+});
+
+// ---- Mise à jour automatique (Phase E) ----
+
+ipcMain.handle('update-get-status', () => autoUpdater.getStatus());
+ipcMain.handle('update-check', () => autoUpdater.checkForUpdates());
+ipcMain.handle('update-download', () => autoUpdater.downloadUpdate());
+ipcMain.handle('update-install', () => autoUpdater.quitAndInstall());
+
+// ---- Tableau de bord unifié des serveurs ----
+
+function collectMinecraftServers() {
+  const root = minecraftManager.getRootFolder();
+  return root ? minecraftManager.listServers(root) : [];
+}
+
+async function collectArkServers() {
+  try {
+    const { rootFolder } = await arkManager.getOrAutoDetectRootFolder();
+    return rootFolder ? arkManager.listServers(rootFolder) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// Liste unifiée de tous les serveurs (Minecraft, Ark, SteamCMD) avec leur statut.
+ipcMain.handle('dashboard-list', async () => {
+  const settings = appSettings.getSettings();
+  const auto = settings.autoStartServers || {};
+  const autoRestart = settings.autoRestartServers || {};
+  const restartHours = settings.restartIntervalHours || {};
+  const list = [];
+
+  for (const s of collectMinecraftServers()) {
+    const id = mcServerId(s.path);
+    list.push({
+      id, type: 'minecraft', name: s.name, path: s.path,
+      status: processManager.getState(id).status,
+      canStart: !!s.launchScript,
+      launchScript: s.launchScript,
+      launchScriptType: s.launchScriptType,
+      autoStart: !!auto[id],
+      autoRestart: !!autoRestart[id],
+      restartHours: restartHours[id] || 0,
+    });
+  }
+
+  for (const s of await collectArkServers()) {
+    const id = arkServerId(s.path);
+    list.push({
+      id, type: 'ark', name: s.name, path: s.path,
+      status: processManager.getState(id).status,
+      canStart: !!s.executable,
+      autoStart: !!auto[id],
+      autoRestart: !!autoRestart[id],
+      restartHours: restartHours[id] || 0,
+    });
+  }
+
+  list.push({
+    id: 'steamcmd', type: 'steamcmd', name: 'SteamCMD', path: null,
+    status: processManager.getState('steamcmd').status,
+    canStart: steamcmdManager.isInstalled(),
+    autoStart: !!auto['steamcmd'],
+  });
+
+  return list;
+});
+
+// RAM/CPU (arbre de processus) des serveurs en cours d'exécution.
+ipcMain.handle('dashboard-stats', async () => {
+  const running = processManager.listTracked().filter(
+    (t) => (t.status === 'running' || t.status === 'starting') && t.pid
+  );
+  if (running.length === 0) return {};
+
+  const stats = await serverStats.getProcessTreeStats(running.map((t) => t.pid));
+  const byId = {};
+  for (const t of running) {
+    const s = stats[String(t.pid)];
+    if (s) byId[t.id] = s;
+  }
+  return byId;
+});
+
+function startServerFromDescriptor(server) {
+  if (!server) return { ok: false, error: 'no server' };
+  if (server.type === 'minecraft') {
+    return launchMinecraftServer(server.path, server.launchScript, server.launchScriptType);
+  }
+  if (server.type === 'ark') {
+    return launchArkServerProcess(server.path, arkManager.readLaunchConfig(server.path));
+  }
+  if (server.type === 'steamcmd') {
+    return steamcmdManager.launch();
+  }
+  return { ok: false, error: 'unknown type' };
+}
+
+ipcMain.handle('dashboard-start', (_evt, server) => startServerFromDescriptor(server));
+
+ipcMain.handle('dashboard-stop', (_evt, server) => {
+  if (!server) return { ok: false };
+  if (server.type === 'minecraft') return processManager.stopProcess(mcServerId(server.path), { graceful: true });
+  if (server.type === 'ark') return processManager.stopProcess(arkServerId(server.path), { graceful: false });
+  if (server.type === 'steamcmd') return steamcmdManager.stop();
+  return { ok: false };
+});
+
+ipcMain.handle('dashboard-force-stop', (_evt, server) => {
+  if (!server) return { ok: false };
+  if (server.type === 'minecraft') return processManager.forceStop(mcServerId(server.path));
+  if (server.type === 'ark') return processManager.forceStop(arkServerId(server.path));
+  if (server.type === 'steamcmd') return steamcmdManager.forceStop();
+  return { ok: false };
+});
+
+ipcMain.handle('dashboard-set-autostart', (_evt, id, enabled) => {
+  const settings = appSettings.getSettings();
+  const auto = { ...(settings.autoStartServers || {}) };
+  if (enabled) auto[id] = true;
+  else delete auto[id];
+  appSettings.setSetting('autoStartServers', auto);
+  return auto;
+});
+
+// Démarre automatiquement les serveurs marqués « auto-démarrage » (peu après le
+// lancement de l'appli, pour laisser le système se stabiliser).
+async function autoStartEnabledServers() {
+  const auto = appSettings.getSettings().autoStartServers || {};
+  if (!Object.values(auto).some(Boolean)) return;
+
+  const mcRoot = minecraftManager.getRootFolder();
+  if (mcRoot) {
+    for (const s of minecraftManager.listServers(mcRoot)) {
+      const id = mcServerId(s.path);
+      if (auto[id] && s.launchScript && !processManager.isRunning(id)) {
+        launchMinecraftServer(s.path, s.launchScript, s.launchScriptType);
+      }
+    }
+  }
+
+  for (const s of await collectArkServers()) {
+    const id = arkServerId(s.path);
+    if (auto[id] && s.executable && !processManager.isRunning(id)) {
+      launchArkServerProcess(s.path, arkManager.readLaunchConfig(s.path));
+    }
+  }
+
+  if (auto['steamcmd'] && steamcmdManager.isInstalled() && !processManager.isRunning('steamcmd')) {
+    steamcmdManager.launch();
+  }
+}
+
+// ---- Redémarrage auto au crash + redémarrages planifiés ----
+
+function findServerDescriptorById(id) {
+  if (id.startsWith('mc:')) {
+    const p = id.slice(3);
+    const root = minecraftManager.getRootFolder();
+    const s = root ? minecraftManager.listServers(root).find((x) => x.path === p) : null;
+    return s ? { type: 'minecraft', path: p, launchScript: s.launchScript, launchScriptType: s.launchScriptType } : null;
+  }
+  if (id.startsWith('ark:')) {
+    return { type: 'ark', path: id.slice(4) };
+  }
+  return null;
+}
+
+function startServerById(id) {
+  const d = findServerDescriptorById(id);
+  if (!d) return;
+  if (d.type === 'minecraft' && d.launchScript) {
+    launchMinecraftServer(d.path, d.launchScript, d.launchScriptType);
+  } else if (d.type === 'ark') {
+    launchArkServerProcess(d.path, arkManager.readLaunchConfig(d.path));
+  }
+}
+
+// Redémarrage propre planifié : arrêt gracieux, puis relance une fois arrêté.
+function restartServerById(id) {
+  const d = findServerDescriptorById(id);
+  if (!d) return;
+  if (!processManager.isRunning(id)) { startServerById(id); return; }
+
+  if (d.type === 'minecraft') processManager.stopProcess(id, { graceful: true });
+  else processManager.stopProcess(id, { graceful: false });
+
+  const startedAt = Date.now();
+  const iv = setInterval(() => {
+    const st = processManager.getState(id).status;
+    if (st === 'stopped' || st === 'error') {
+      clearInterval(iv);
+      setTimeout(() => startServerById(id), 3000);
+    } else if (Date.now() - startedAt > 60000) {
+      clearInterval(iv);
+      processManager.forceStop(id);
+      setTimeout(() => startServerById(id), 5000);
+    }
+  }, 2000);
+}
+
+// Anti-boucle : au plus 3 redémarrages auto en 10 min par serveur.
+const restartHistory = {};
+function canAutoRestart(id) {
+  const now = Date.now();
+  const arr = (restartHistory[id] || []).filter((t) => now - t < 600000);
+  restartHistory[id] = arr;
+  return arr.length < 3;
+}
+
+processManager.setCrashHandler((serverId) => {
+  const auto = appSettings.getSettings().autoRestartServers || {};
+  if (!auto[serverId]) return;
+  if (!canAutoRestart(serverId)) return;
+  restartHistory[serverId] = (restartHistory[serverId] || []).concat(Date.now());
+  setTimeout(() => startServerById(serverId), 5000);
+});
+
+const restartTimers = {};
+function rebuildRestartSchedules() {
+  for (const k of Object.keys(restartTimers)) {
+    clearInterval(restartTimers[k]);
+    delete restartTimers[k];
+  }
+  const hoursMap = appSettings.getSettings().restartIntervalHours || {};
+  for (const [id, hours] of Object.entries(hoursMap)) {
+    const h = Number(hours);
+    if (h > 0) restartTimers[id] = setInterval(() => restartServerById(id), h * 3600 * 1000);
+  }
+}
+
+ipcMain.handle('dashboard-set-autorestart', (_evt, id, enabled) => {
+  const s = appSettings.getSettings();
+  const m = { ...(s.autoRestartServers || {}) };
+  if (enabled) m[id] = true; else delete m[id];
+  appSettings.setSetting('autoRestartServers', m);
+  return m;
+});
+
+ipcMain.handle('dashboard-set-restart-interval', (_evt, id, hours) => {
+  const s = appSettings.getSettings();
+  const m = { ...(s.restartIntervalHours || {}) };
+  const h = Number(hours) || 0;
+  if (h > 0) m[id] = h; else delete m[id];
+  appSettings.setSetting('restartIntervalHours', m);
+  rebuildRestartSchedules();
+  return m;
+});

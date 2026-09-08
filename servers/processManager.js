@@ -8,9 +8,14 @@ const processes = new Map();
 const MAX_LOG_LINES = 500;
 
 let broadcastFn = null; // injecté par main.js : (channel, payload) => void
+let crashHandler = null; // injecté par main.js : (serverId) => void, appelé sur crash
 
 function setBroadcaster(fn) {
   broadcastFn = fn;
+}
+
+function setCrashHandler(fn) {
+  crashHandler = fn;
 }
 
 function broadcast(channel, payload) {
@@ -56,6 +61,21 @@ function isAnyRunningWithPrefix(prefix) {
     if (id.startsWith(prefix) && entry.status === 'running') return true;
   }
   return false;
+}
+
+/** PID du processus racine suivi pour ce serveur (ou null si non actif). */
+function getPid(serverId) {
+  const entry = processes.get(serverId);
+  return entry && entry.child && entry.child.pid ? entry.child.pid : null;
+}
+
+/** Liste tous les processus suivis : [{ id, status, pid }] — pour le tableau de bord. */
+function listTracked() {
+  const out = [];
+  for (const [id, entry] of processes) {
+    out.push({ id, status: entry.status, pid: entry.child && entry.child.pid ? entry.child.pid : null });
+  }
+  return out;
 }
 
 /** État courant d'un serveur (utilisé pour resynchroniser l'UI à l'ouverture d'une fiche). */
@@ -128,6 +148,12 @@ function startProcess(serverId, command, args, options = {}) {
       exitInfo: { code, signal },
       errorMessage: crashed ? `Le serveur s'est arrêté de façon inattendue (code de sortie ${code}).` : null,
     });
+
+    // Crash (arrêt non demandé) : on notifie main.js, qui décidera d'un
+    // éventuel redémarrage automatique selon les réglages.
+    if (crashed && crashHandler) {
+      try { crashHandler(serverId); } catch (e) { /* ignore */ }
+    }
   });
 
   return { ok: true };
@@ -201,4 +227,4 @@ function sendCommand(serverId, command) {
   return { ok: true };
 }
 
-module.exports = { setBroadcaster, startProcess, stopProcess, forceStop, sendCommand, getState, isRunning, isAnyRunningWithPrefix };
+module.exports = { setBroadcaster, setCrashHandler, startProcess, stopProcess, forceStop, sendCommand, getState, getPid, listTracked, isRunning, isAnyRunningWithPrefix };

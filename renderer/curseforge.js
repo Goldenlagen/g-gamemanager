@@ -45,6 +45,12 @@
     pageInfo: document.getElementById('cfPageInfo'),
   };
 
+  // Traduction (repli sur le texte français si la clé est absente).
+  function t(key, fb, params) {
+    const v = window.AppSettings ? window.AppSettings.t(key, params) : null;
+    return v != null ? v : fb;
+  }
+
   function showError(message) {
     if (!message) {
       el.errorBanner.style.display = 'none';
@@ -62,8 +68,8 @@
   }
 
   function formatBytes(bytes) {
-    if (!bytes) return '0 o';
-    const units = ['o', 'Ko', 'Mo', 'Go'];
+    if (!bytes) return '0 ' + t('units.b', 'o');
+    const units = [t('units.b', 'o'), t('units.kb', 'Ko'), t('units.mb', 'Mo'), t('units.gb', 'Go')];
     let i = 0;
     let n = bytes;
     while (n >= 1024 && i < units.length - 1) {
@@ -132,7 +138,7 @@
 
   function updateCategoryButtonLabel() {
     const n = state.categoryIds.length;
-    el.categoryBtn.textContent = (n === 0 ? 'Tous les types' : `Types (${n})`) + ' ▾';
+    el.categoryBtn.textContent = (n === 0 ? t('cf.allTypes', 'Tous les types') : `${t('cf.types', 'Types')} (${n})`) + ' ▾';
   }
 
   function toggleCategoryPanel(force) {
@@ -167,7 +173,7 @@
     setLoading(false);
 
     if (!res || !res.ok) {
-      showError((res && res.error) || 'Échec de la recherche.');
+      showError((res && res.error) || t('cf.searchFailed', 'Échec de la recherche.'));
       renderPagination();
       return;
     }
@@ -224,7 +230,7 @@
     // Sélecteur de version
     const versionSelect = document.createElement('select');
     versionSelect.className = 'cf-version-select';
-    versionSelect.innerHTML = '<option>Chargement des versions…</option>';
+    versionSelect.innerHTML = '<option>' + t('cf.versionsLoading', 'Chargement des versions…') + '</option>';
     versionSelect.disabled = true;
 
     // Boutons
@@ -233,12 +239,12 @@
 
     const installBtn = document.createElement('button');
     installBtn.className = 'cf-dl-btn';
-    installBtn.textContent = '⬇ Installer le modpack';
+    installBtn.textContent = t('cf.install', '⬇ Installer le modpack');
     installBtn.disabled = true;
 
     const serverBtn = document.createElement('button');
     serverBtn.className = 'cf-dl-btn secondary';
-    serverBtn.textContent = 'Serverpack';
+    serverBtn.textContent = t('cf.serverpack', 'Serverpack');
     serverBtn.disabled = true;
 
     actions.appendChild(installBtn);
@@ -259,7 +265,7 @@
       const already = state.installedSet.has(installedKey(pack.id, fileId));
 
       installBtn.disabled = state.downloading || already;
-      installBtn.textContent = already ? '✓ Déjà installé' : '⬇ Installer le modpack';
+      installBtn.textContent = already ? t('cf.installed', '✓ Déjà installé') : t('cf.install', '⬇ Installer le modpack');
 
       if (serverPackFileId) {
         const spInstalled =
@@ -267,19 +273,19 @@
           state.installedServerNames.has(normalizeName(pack.name));
         if (spInstalled) {
           serverBtn.disabled = true;
-          serverBtn.textContent = '✓ Serveur installé';
-          serverBtn.title = 'Un serveur pour ce modpack est déjà installé dans ton dossier.';
+          serverBtn.textContent = t('cf.serverInstalled', '✓ Serveur installé');
+          serverBtn.title = t('cf.serverInstalledTitle', 'Un serveur pour ce modpack est déjà installé dans ton dossier.');
           serverBtn.dataset.serverpack = String(serverPackFileId);
         } else {
           serverBtn.disabled = state.downloading;
-          serverBtn.textContent = 'Serverpack';
+          serverBtn.textContent = t('cf.serverpack', 'Serverpack');
           serverBtn.title = '';
           serverBtn.dataset.serverpack = String(serverPackFileId);
         }
       } else {
         serverBtn.disabled = true;
-        serverBtn.textContent = 'Pas de serverpack';
-        serverBtn.title = 'Cette version ne fournit pas de serverpack.';
+        serverBtn.textContent = t('cf.noServerpack', 'Pas de serverpack');
+        serverBtn.title = t('cf.noServerpackTitle', 'Cette version ne fournit pas de serverpack.');
         serverBtn.dataset.serverpack = '';
       }
     }
@@ -289,13 +295,13 @@
     installBtn.addEventListener('click', () => {
       const opt = versionSelect.selectedOptions[0];
       if (!opt) return;
-      startInstall(pack, Number(opt.value), card, () => applyVersionState());
+      startInstall(pack, Number(opt.value), card, () => applyVersionState(), installBtn);
     });
 
     serverBtn.addEventListener('click', () => {
       const spId = serverBtn.dataset.serverpack ? Number(serverBtn.dataset.serverpack) : null;
       if (!spId) return;
-      startServerpack(pack, spId);
+      startServerpack(pack, spId, serverBtn);
     });
 
     // Chargement asynchrone des versions.
@@ -307,7 +313,7 @@
   async function loadVersions(pack, versionSelect, applyVersionState) {
     const res = await window.api.cfGetModpackFiles(pack.id);
     if (!res || !res.ok || !res.files || res.files.length === 0) {
-      versionSelect.innerHTML = '<option>Versions indisponibles</option>';
+      versionSelect.innerHTML = '<option>' + t('cf.versionsUnavailable', 'Versions indisponibles') + '</option>';
       versionSelect.disabled = true;
       return;
     }
@@ -321,7 +327,7 @@
       if (f.mcVersion) bits.push(f.mcVersion);
       if (f.loaderName) bits.push(f.loaderName);
       const already = state.installedSet.has(installedKey(pack.id, f.id));
-      const suffix = (bits.length ? ' [' + bits.join(' ') + ']' : '') + (already ? ' ✓ installé' : '');
+      const suffix = (bits.length ? ' [' + bits.join(' ') + ']' : '') + (already ? t('cf.installedSuffix', ' ✓ installé') : '');
       let label = (f.displayName || f.fileName || String(f.id));
       if (label.length > 42) label = label.slice(0, 41) + '…';
       opt.textContent = label + suffix;
@@ -344,15 +350,17 @@
     const pageNumber = Math.floor(start / state.pageSize) + 1;
     const totalPages = Math.max(1, Math.ceil(state.totalCount / state.pageSize));
 
-    el.pageInfo.textContent = state.totalCount ? `Page ${pageNumber} / ${totalPages} (${state.totalCount} modpacks)` : '';
+    el.pageInfo.textContent = state.totalCount
+      ? `${t('cf.pageWord', 'Page')} ${pageNumber} / ${totalPages} (${state.totalCount} ${t('cf.modpacksWord', 'modpacks')})`
+      : '';
 
     const nextIndex = start + state.pageSize;
     el.prevBtn.disabled = state.loading || state.downloading || start <= 0;
     el.nextBtn.disabled = state.loading || state.downloading || nextIndex >= state.totalCount || nextIndex >= 10000;
   }
 
-  el.prevBtn.addEventListener('click', () => { if (state.index > 0) { window.GameSounds?.navigate(); doSearch(state.index - state.pageSize); } });
-  el.nextBtn.addEventListener('click', () => { window.GameSounds?.navigate(); doSearch(state.index + state.pageSize); });
+  el.prevBtn.addEventListener('click', () => { if (state.index > 0) { doSearch(state.index - state.pageSize); } });
+  el.nextBtn.addEventListener('click', () => { doSearch(state.index + state.pageSize); });
   el.searchBtn.addEventListener('click', () => { window.GameSounds?.toggle(); doSearch(0); });
   el.searchInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(0); });
 
@@ -381,15 +389,26 @@
   function beginProgress(labelText) {
     el.downloadStatus.style.display = 'block';
     el.downloadBar.style.width = '0%';
+    el.downloadBar.classList.remove('cf-bar-done'); // repart en couleur normale
     el.downloadLabel.textContent = labelText;
   }
 
-  async function startInstall(pack, fileId, card, reapply) {
+  function markProgressDone() {
+    el.downloadBar.style.width = '100%';
+    el.downloadBar.classList.add('cf-bar-done'); // barre verte une fois terminé
+  }
+
+  function showBtnDownloading(btn) {
+    if (btn) btn.innerHTML = '<span class="cf-dl-icon">⬇</span>';
+  }
+
+  async function startInstall(pack, fileId, card, reapply, btn) {
     if (state.downloading) return;
     showError('');
     setDownloading(true);
+    showBtnDownloading(btn); // remplace le texte par une icône de téléchargement
     card.classList.add('cf-card-downloading');
-    beginProgress(`Préparation de l'installation : ${pack.name}…`);
+    beginProgress(t('cf.prepInstall', `Préparation de l'installation : ${pack.name}…`, { name: pack.name }));
     window.GameSounds?.confirm();
 
     const res = await window.api.cfInstallProfile({
@@ -404,8 +423,8 @@
     if (!res || !res.ok) {
       el.downloadStatus.style.display = 'none';
       setDownloading(false);
-      let msg = (res && res.error) || "Échec de l'installation.";
-      if (res && res.needsJava) msg += ' (Java requis pour Forge/NeoForge.)';
+      let msg = (res && res.error) || t('cf.installFailed', "Échec de l'installation.");
+      if (res && res.needsJava) msg += t('cf.javaRequired', ' (Java requis pour Forge/NeoForge.)');
       if (res && res.alreadyInstalled) {
         await refreshInstalledSet();
         reapply && reapply();
@@ -414,10 +433,14 @@
       return;
     }
 
-    el.downloadBar.style.width = '100%';
-    let doneMsg = `✓ Profil « ${pack.name} » créé dans le launcher Minecraft (MC ${res.mcVersion}, ${res.loader}).`;
+    markProgressDone();
+    let doneMsg = t('cf.profileCreated',
+      `✓ Profil « ${pack.name} » créé dans le launcher Minecraft (MC ${res.mcVersion}, ${res.loader}).`,
+      { name: pack.name, mc: res.mcVersion, loader: res.loader });
     if (res.failedMods && res.failedMods.length > 0) {
-      doneMsg += ` ⚠ ${res.failedMods.length}/${res.totalMods} mod(s) non téléchargé(s) (distribution désactivée par l'auteur — à ajouter manuellement).`;
+      doneMsg += t('cf.modsFailed',
+        ` ⚠ ${res.failedMods.length}/${res.totalMods} mod(s) non téléchargé(s) (distribution désactivée par l'auteur — à ajouter manuellement).`,
+        { failed: res.failedMods.length, total: res.totalMods });
     }
     el.downloadLabel.textContent = doneMsg;
 
@@ -427,11 +450,12 @@
     window.McProfilesPanel?.refresh?.();
   }
 
-  async function startServerpack(pack, serverPackFileId) {
+  async function startServerpack(pack, serverPackFileId, btn) {
     if (state.downloading) return;
     showError('');
     setDownloading(true);
-    beginProgress(`Téléchargement du serverpack : ${pack.name}…`);
+    showBtnDownloading(btn); // remplace le texte par une icône de téléchargement
+    beginProgress(t('cf.dlServerpack', `Téléchargement du serverpack : ${pack.name}…`, { name: pack.name }));
     window.GameSounds?.confirm();
 
     const res = await window.api.cfDownloadServerpack({
@@ -443,11 +467,11 @@
     if (!res || !res.ok) {
       el.downloadStatus.style.display = 'none';
       setDownloading(false);
-      showError((res && res.error) || 'Échec du téléchargement du serverpack.');
+      showError((res && res.error) || t('cf.serverpackFailed', 'Échec du téléchargement du serverpack.'));
       return;
     }
-    el.downloadBar.style.width = '100%';
-    el.downloadLabel.textContent = `✓ Serverpack « ${pack.name} » téléchargé dans ton dossier de serveurs.`;
+    markProgressDone();
+    el.downloadLabel.textContent = t('cf.serverpackDone', `✓ Serverpack « ${pack.name} » téléchargé dans ton dossier de serveurs.`, { name: pack.name });
 
     // Rafraîchit les serveurs installés pour griser immédiatement ce serverpack.
     await refreshInstalledSet();
@@ -460,40 +484,46 @@
     if (!data) return;
     switch (data.phase) {
       case 'resolving':
-        el.downloadLabel.textContent = 'Résolution du lien de téléchargement…';
+        el.downloadLabel.textContent = t('cf.phaseResolving', 'Résolution du lien de téléchargement…');
         el.downloadBar.style.width = '0%';
         break;
       case 'downloading':
         if (data.total > 0) {
           const pct = Math.min(100, Math.round((data.received / data.total) * 100));
           el.downloadBar.style.width = pct + '%';
-          el.downloadLabel.textContent = `Téléchargement… ${pct}% (${formatBytes(data.received)} / ${formatBytes(data.total)})`;
+          el.downloadLabel.textContent = t('cf.phaseDownloading',
+            `Téléchargement… ${pct}% (${formatBytes(data.received)} / ${formatBytes(data.total)})`,
+            { pct, received: formatBytes(data.received), total: formatBytes(data.total) });
         } else {
-          el.downloadLabel.textContent = `Téléchargement… ${formatBytes(data.received)}`;
+          el.downloadLabel.textContent = t('cf.phaseDownloadingSimple',
+            `Téléchargement… ${formatBytes(data.received)}`, { received: formatBytes(data.received) });
         }
         break;
       case 'extracting':
         el.downloadBar.style.width = '100%';
-        el.downloadLabel.textContent = "Extraction de l'archive…";
+        el.downloadLabel.textContent = t('cf.phaseExtracting', "Extraction de l'archive…");
         break;
       case 'overrides':
-        el.downloadLabel.textContent = 'Copie des fichiers de configuration (overrides)…';
+        el.downloadLabel.textContent = t('cf.phaseOverrides', 'Copie des fichiers de configuration (overrides)…');
         break;
       case 'mods': {
         const pct = data.total > 0 ? Math.round((data.received / data.total) * 100) : 0;
         el.downloadBar.style.width = pct + '%';
-        el.downloadLabel.textContent = `Téléchargement des mods… ${data.received}/${data.total}`;
+        el.downloadLabel.textContent = t('cf.phaseMods',
+          `Téléchargement des mods… ${data.received}/${data.total}`,
+          { received: data.received, total: data.total });
         break;
       }
       case 'loader':
         el.downloadBar.style.width = '100%';
-        el.downloadLabel.textContent = `Installation du loader (${data.loader || '...'})…`;
+        el.downloadLabel.textContent = t('cf.phaseLoader',
+          `Installation du loader (${data.loader || '...'})…`, { loader: data.loader || '...' });
         break;
       case 'icon':
-        el.downloadLabel.textContent = "Préparation de l'icône du profil…";
+        el.downloadLabel.textContent = t('cf.phaseIcon', "Préparation de l'icône du profil…");
         break;
       case 'profile':
-        el.downloadLabel.textContent = 'Création du profil dans le launcher…';
+        el.downloadLabel.textContent = t('cf.phaseProfile', 'Création du profil dans le launcher…');
         break;
       default:
         break;
@@ -505,6 +535,7 @@
   async function openModal() {
     el.modal.style.display = 'flex';
     el.downloadStatus.style.display = 'none';
+    updateCategoryButtonLabel();
     showError('');
     await refreshInstalledSet();
     if (!state.categoriesLoaded) await loadCategories();
@@ -519,4 +550,11 @@
   el.openBtn.addEventListener('click', () => { window.GameSounds?.toggle(); openModal(); });
   el.closeBtn.addEventListener('click', () => { window.GameSounds?.back(); closeModal(); });
   el.modal.addEventListener('click', (e) => { if (e.target === el.modal) closeModal(); });
+
+  // Retraduit les libellés dynamiques quand la langue change.
+  document.addEventListener('gg-langchange', () => {
+    updateCategoryButtonLabel();
+    renderPagination();
+    el.grid.querySelectorAll('.cf-version-select').forEach((sel) => sel.dispatchEvent(new Event('change')));
+  });
 })();

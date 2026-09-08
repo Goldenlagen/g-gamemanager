@@ -2,18 +2,95 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://media.forgecdn.net https://mediafilez.forgecdn.net; style-src 'self' 'unsafe-inline'; script-src 'self';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https://cdn.cloudflare.steamstatic.com https://cdn.akamai.steamstatic.com https://media.forgecdn.net https://mediafilez.forgecdn.net; style-src 'self' 'unsafe-inline'; script-src 'self'; media-src 'self' file:;" />
   <title>G-GameManager</title>
   <link rel="stylesheet" href="style.css" />
+  <!-- Chargé tôt (thème appliqué avant le premier rendu pour éviter un flash). -->
+  <script src="appsettings.js"></script>
 </head>
 <body>
 
   <div class="app-tabs">
-    <button class="app-tab active" data-view="games">🎮 Jeux</button>
-    <button class="app-tab" data-view="minecraft"><img src="assets/minecraft-tab-icon.png" class="tab-icon" alt="" /> Serveurs Minecraft</button>
-    <button class="app-tab" data-view="mcprofiles"><img src="assets/minecraft-tab-icon.png" class="tab-icon" alt="" /> Minecraft Profiles</button>
-    <button class="app-tab" data-view="ark"><img src="assets/ark-tab-icon.png" class="tab-icon" alt="" /> Serveurs Ark</button>
-    <button class="app-tab" data-view="performance"><img src="assets/perf-tab-icon.png" class="tab-icon" alt="" /> Performance</button>
+    <button class="app-tab active" data-view="games"><span data-i18n="tab.games">🎮 Jeux</span></button>
+    <button class="app-tab" data-view="dashboard"><span data-i18n="tab.dashboard">🖥️ Tableau de bord</span></button>
+    <button class="app-tab" data-view="minecraft"><img src="assets/minecraft-tab-icon.png" class="tab-icon" alt="" /> <span data-i18n="tab.minecraftGroup">Minecraft</span></button>
+    <button class="app-tab" data-view="ark"><img src="assets/ark-tab-icon.png" class="tab-icon" alt="" /> <span data-i18n="tab.ark">Serveurs Ark</span></button>
+    <button class="app-tab" data-view="steamcmd"><span class="cmd-icon">&gt;_</span> <span data-i18n="tab.steamcmd">SteamCMD</span></button>
+    <button id="appSettingsBtn" class="app-settings-btn"><span class="gear">⚙</span> <span data-i18n="settings.title">Paramètres</span></button>
+  </div>
+
+  <div id="appSettingsModal" class="modal-backdrop" style="display:none;">
+    <div class="modal">
+      <div class="cf-modal-header">
+        <div class="modal-title" style="margin-bottom:0;" data-i18n="settings.title">Paramètres</div>
+        <button id="appSettingsCloseBtn" class="secondary">✕</button>
+      </div>
+      <div class="app-setting-row">
+        <span data-i18n="settings.theme">Thème</span>
+        <div class="seg-control" id="themeSeg">
+          <button data-theme-choice="light" data-i18n="settings.light">Clair</button>
+          <button data-theme-choice="dark" data-i18n="settings.dark">Sombre</button>
+        </div>
+      </div>
+      <div class="app-setting-row">
+        <span data-i18n="settings.language">Langue</span>
+        <div class="seg-control" id="langSeg">
+          <button data-lang-choice="fr">Français</button>
+          <button data-lang-choice="en">English</button>
+        </div>
+      </div>
+
+      <div class="settings-subtitle" data-i18n="settings.gamesSection">Jeux</div>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="startupCheckbox" />
+        <span data-i18n="settings.startup">Lancer au démarrage de Windows</span>
+      </label>
+
+      <label class="checkbox-row">
+        <input type="checkbox" id="standaloneScanCheckbox" />
+        <span data-i18n="settings.standalone">Détecter les jeux installés sans launcher (expérimental)</span>
+      </label>
+      <p class="settings-hint" data-i18n="settings.standaloneHint">
+        Recherche des jeux installés directement (sans Steam/Epic/etc.) via le registre Windows.
+        Best-effort : peut inclure quelques logiciels qui ne sont pas des jeux. Désactivé par défaut.
+        Nécessite une resynchronisation pour prendre effet.
+      </p>
+
+      <p id="lastSyncInfo" class="settings-hint" data-i18n="games.lastSyncInit">Dernière synchronisation : —</p>
+
+      <div class="settings-subtitle" data-i18n="settings.artworkSection">Jaquettes (SteamGridDB)</div>
+      <input type="password" id="sgdbKeyInput" class="settings-text-input" placeholder="Clé API SteamGridDB" data-i18n-ph="settings.sgdbKey" />
+      <p class="settings-hint" data-i18n="settings.sgdbHint">
+        Crée une clé API gratuite sur steamgriddb.com (Preferences → API). Ensuite, ouvre un jeu dans la ludothèque et clique « 🖼 Jaquette » pour récupérer une belle jaquette.
+      </p>
+
+      <div class="settings-subtitle" data-i18n="settings.manualGames">Jeux ajoutés manuellement</div>
+      <div id="manualGamesList" class="manual-games-list"></div>
+      <p class="settings-hint" data-i18n="settings.manualHint">
+        Astuce : si un jeu (notamment Riot Games ou Battle.net) n'est pas détecté automatiquement,
+        ajoute-le manuellement via « + Ajouter un jeu ».
+      </p>
+
+      <div class="settings-subtitle" data-i18n="settings.updateSection">Mise à jour</div>
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoUpdateToggle" />
+        <span data-i18n="settings.updateAutoCheck">Vérifier les mises à jour au démarrage</span>
+      </label>
+      <p class="settings-hint">
+        <span data-i18n="settings.updateCurrent">Version actuelle :</span> <span id="updateCurrentVersion">—</span>
+      </p>
+      <div class="update-controls">
+        <button id="updateCheckBtn" class="secondary" data-i18n="settings.updateCheck">Vérifier les mises à jour</button>
+        <button id="updateDownloadBtn" class="secondary" data-i18n="settings.updateDownload" hidden>Télécharger</button>
+        <button id="updateInstallBtn" class="primary" data-i18n="settings.updateInstall" hidden>Redémarrer et installer</button>
+      </div>
+      <p id="updateStatus" class="settings-hint"></p>
+      <p class="settings-hint" data-i18n="settings.updateHint">
+        L'hébergement du flux de mises à jour n'est pas encore branché : cette section devient
+        active une fois la publication configurée côté build.
+      </p>
+    </div>
   </div>
 
   <div id="view-games" class="view active">
@@ -22,9 +99,9 @@
     <div class="topbar-title">🎮 G-GameManager</div>
 
     <div class="topbar-filters">
-      <label>Plateforme :</label>
+      <label data-i18n="games.platform">Plateforme :</label>
       <select id="platformFilter">
-        <option value="all">Tous les jeux</option>
+        <option value="all" data-i18n="games.allGames">Tous les jeux</option>
         <option value="steam">Steam</option>
         <option value="epic">Epic Games</option>
         <option value="riot">Riot Games</option>
@@ -33,114 +110,167 @@
         <option value="origin">Origin / EA App</option>
         <option value="ubisoft">Ubisoft Connect</option>
         <option value="microsoft">Microsoft / Xbox</option>
-        <option value="standalone">Sans launcher</option>
-        <option value="manual">Ajoutés manuellement</option>
+        <option value="standalone" data-i18n="games.optStandalone">Sans launcher</option>
+        <option value="manual" data-i18n="games.optManual">Ajoutés manuellement</option>
       </select>
 
-      <label>Rechercher :</label>
-      <input type="text" id="searchBox" placeholder="Nom du jeu…" />
+      <label data-i18n="games.searchLabel">Rechercher :</label>
+      <input type="text" id="searchBox" placeholder="Nom du jeu…" data-i18n-ph="games.searchPh" />
     </div>
 
     <div class="topbar-actions">
-      <button id="settingsBtn">⚙ Paramètres</button>
-      <button id="refreshBtn">⟳ Resynchroniser</button>
-      <button id="addGameBtn">+ Ajouter un jeu</button>
+      <button id="refreshBtn" data-i18n="games.resync">⟳ Resynchroniser</button>
+      <button id="addGameBtn" data-i18n="games.addGame">+ Ajouter un jeu</button>
       <button id="minimizeBtn">—</button>
     </div>
   </div>
 
   <div class="content">
-    <div id="gamesGrid" class="games-grid"></div>
+    <div class="games-main">
+      <div id="gamesGrid" class="games-grid"></div>
 
-    <div id="loadingOverlay" class="overlay">
-      <div class="overlay-inner">
-        <div class="overlay-title">Recherche de vos jeux…</div>
-        <div class="spinner"></div>
+      <div id="loadingOverlay" class="overlay">
+        <div class="overlay-inner">
+          <div class="overlay-title" data-i18n="games.searching">Recherche de vos jeux…</div>
+          <div class="spinner"></div>
+        </div>
+      </div>
+
+      <div id="emptyState" class="empty-state" style="display:none;" data-i18n="games.empty">
+        Aucun jeu trouvé. Essayez « Rafraîchir » ou ajoutez un jeu manuellement.
       </div>
     </div>
 
-    <div id="emptyState" class="empty-state" style="display:none;">
-      Aucun jeu trouvé. Essayez « Rafraîchir » ou ajoutez un jeu manuellement.
-    </div>
-
-    <div id="settingsPanel" class="settings-panel" style="display:none;">
-      <div class="settings-header">
-        <div class="settings-title">Paramètres</div>
-        <button id="closeSettingsBtn">✕</button>
-      </div>
-
-      <label class="checkbox-row">
-        <input type="checkbox" id="startupCheckbox" />
-        Lancer au démarrage de Windows
-      </label>
-
-      <label class="checkbox-row">
-        <input type="checkbox" id="standaloneScanCheckbox" />
-        Détecter les jeux installés sans launcher (expérimental)
-      </label>
-      <p class="settings-hint">
-        Recherche des jeux installés directement (sans Steam/Epic/etc.) via le registre
-        Windows. Best-effort : peut inclure quelques logiciels qui ne sont pas des jeux,
-        Windows ne faisant pas de différence fiable entre les deux. Désactivé par défaut.
-        Nécessite une resynchronisation (bouton « ⟳ Resynchroniser ») pour prendre effet.
-      </p>
-
-      <p id="lastSyncInfo" class="settings-hint">Dernière synchronisation : —</p>
-      <p class="settings-hint">
-        La liste des jeux est mise en cache et resynchronisée automatiquement une
-        fois par semaine. Utilise « ⟳ Resynchroniser » en haut pour forcer une
-        resynchronisation immédiate (par exemple après avoir installé un nouveau jeu).
-      </p>
-
-      <div class="settings-subtitle">Jeux ajoutés manuellement</div>
-      <div id="manualGamesList" class="manual-games-list"></div>
-
-      <p class="settings-hint">
-        Astuce : si un jeu (notamment Riot Games ou Battle.net) n'est pas détecté
-        automatiquement, ajoute-le manuellement via « + Ajouter un jeu ».
-      </p>
-    </div>
+    <aside id="gameDetailPanel" class="game-detail" hidden>
+      <div class="game-detail-art" id="gameDetailArt"></div>
+      <div class="game-detail-name" id="gameDetailName"></div>
+      <div class="game-detail-platform" id="gameDetailPlatform"></div>
+      <div class="game-detail-spacer"></div>
+      <button id="gameDetailPlayBtn" class="game-detail-play" data-i18n="games.play">▶ Jouer</button>
+      <button id="gameDetailArtworkBtn" class="secondary game-detail-artwork" data-i18n="games.fetchArtwork">🖼 Jaquette (SteamGridDB)</button>
+      <button id="gameDetailArtworkResetBtn" class="secondary game-detail-artwork" data-i18n="games.resetArtwork">Réinitialiser la jaquette</button>
+      <div id="gameDetailArtworkStatus" class="hint-text"></div>
+    </aside>
   </div>
 
   <div id="addGameModal" class="modal-backdrop" style="display:none;">
     <div class="modal">
-      <div class="modal-title">Ajouter un jeu</div>
-      <label>Nom affiché :</label>
+      <div class="modal-title" data-i18n="addgame.title">Ajouter un jeu</div>
+      <label data-i18n="addgame.name">Nom affiché :</label>
       <input type="text" id="addGameNameInput" />
       <div class="modal-path" id="addGamePathLabel"></div>
       <div class="modal-actions">
-        <button id="addGameCancelBtn" class="secondary">Annuler</button>
-        <button id="addGameConfirmBtn">Ajouter</button>
+        <button id="addGameCancelBtn" class="secondary" data-i18n="common.cancel">Annuler</button>
+        <button id="addGameConfirmBtn" data-i18n="addgame.confirm">Ajouter</button>
       </div>
     </div>
   </div>
 
-  <div class="bottombar">
+  <div class="bottombar" data-i18n="games.hotkeys">
     ↵ Lancer &nbsp;•&nbsp; ← → ↑ ↓ Naviguer &nbsp;•&nbsp; Échap Réduire &nbsp;•&nbsp; Manette compatible
   </div>
 
   </div><!-- /view-games -->
 
-  <div id="view-minecraft" class="view">
+  <div id="view-dashboard" class="view">
     <div class="topbar">
-      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> Serveurs Minecraft</div>
+      <div class="topbar-title" data-i18n="tab.dashboard">🖥️ Tableau de bord</div>
       <div class="topbar-filters">
-        <span id="mcRootFolderLabel" class="folder-label">Aucun dossier sélectionné</span>
+        <span id="dashUpdatedLabel" class="folder-label"></span>
       </div>
       <div class="topbar-actions">
-        <button id="mcChooseFolderBtn">📁 Choisir le dossier</button>
-        <button id="mcRefreshBtn">⟳ Rafraîchir</button>
+        <button id="dashRefreshBtn" data-i18n="common.refresh">⟳ Rafraîchir</button>
+      </div>
+    </div>
+    <div class="dashboard-split">
+      <div class="dashboard-col dashboard-perf">
+        <div class="dashboard-col-head"><span data-i18n="tab.performance">Performance</span> <span id="perfUpdatedLabel" class="folder-label"></span></div>
+        <div class="perf-layout">
+
+          <div class="perf-row">
+            <div class="detail-section perf-card">
+              <h3 data-i18n="perf.cpu">Processeur (CPU)</h3>
+              <div class="perf-big-number" id="perfCpuPercent">—</div>
+              <div class="perf-bar-track"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
+              <p class="hint-text" id="perfCpuModel"></p>
+              <div id="perfCpuCores" class="perf-cores"></div>
+            </div>
+
+            <div class="detail-section perf-card">
+              <h3 data-i18n="perf.proc">Processus les plus gourmands</h3>
+              <div id="perfProcList" class="perf-proc-list"></div>
+              <p id="perfProcEmpty" class="hint-text" style="display:none;" data-i18n="perf.procEmpty">Aucun processus détecté.</p>
+            </div>
+          </div>
+
+          <div class="detail-section perf-card">
+            <h3 data-i18n="perf.ram">Mémoire (RAM)</h3>
+            <div class="perf-big-number" id="perfRamPercent">—</div>
+            <div class="perf-bar-track"><div id="perfRamBar" class="perf-bar-fill"></div></div>
+            <p class="hint-text" id="perfRamDetail"></p>
+          </div>
+
+          <div class="detail-section perf-card">
+            <h3 data-i18n="perf.gpu">Carte graphique (GPU)</h3>
+            <div class="perf-big-number" id="perfGpuPercent">—</div>
+            <div class="perf-bar-track"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
+            <div id="perfGpuList" class="hint-text"></div>
+            <p id="perfGpuEmpty" class="hint-text" style="display:none;" data-i18n="perf.gpuEmpty">Aucune carte graphique détectée.</p>
+          </div>
+
+          <div class="detail-section perf-card">
+            <h3 data-i18n="perf.disks">Disques</h3>
+            <div id="perfDisksList"></div>
+            <p id="perfDisksEmpty" class="hint-text" style="display:none;" data-i18n="perf.disksEmpty">Impossible de lire l'état des disques.</p>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="dashboard-col dashboard-servers">
+        <div class="dashboard-col-head" data-i18n="dash.serversTitle">Serveurs</div>
+        <div class="dash-filter" id="dashFilter">
+          <button class="dash-filter-btn active" data-filter="all" data-i18n="dash.filterAll">Tous</button>
+          <button class="dash-filter-btn" data-filter="minecraft" data-i18n="tab.minecraftGroup">Minecraft</button>
+          <button class="dash-filter-btn" data-filter="ark" data-i18n="tab.ark">ARK Survival</button>
+          <button class="dash-filter-btn" data-filter="steamcmd">SteamCMD</button>
+        </div>
+        <div class="dash-scroll">
+          <div id="dashList" class="dash-list"></div>
+          <div id="dashEmpty" class="empty-state" style="display:none;position:static;padding:40px;" data-i18n="dash.empty">
+            Aucun serveur détecté. Configure tes serveurs dans les onglets Minecraft, Ark ou SteamCMD.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-minecraft" class="view">
+    <div class="subtabs">
+      <button class="subtab active" data-subtab="mcprofiles" data-i18n="tab.mcprofiles">Profils Minecraft</button>
+      <button class="subtab" data-subtab="mcservers" data-i18n="tab.minecraft">Serveurs Minecraft</button>
+    </div>
+
+    <div id="subview-mcservers" class="subview">
+    <div class="topbar">
+      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> <span data-i18n="tab.minecraft">Serveurs Minecraft</span></div>
+      <div class="topbar-filters">
+        <span id="mcRootFolderLabel" class="folder-label" data-i18n="common.noFolder">Aucun dossier sélectionné</span>
+      </div>
+      <div class="topbar-actions">
+        <button id="mcChooseFolderBtn" data-i18n="common.chooseFolder">📁 Choisir le dossier</button>
+        <button id="mcRefreshBtn" data-i18n="common.refresh">⟳ Rafraîchir</button>
       </div>
     </div>
 
     <div class="server-content">
       <div id="mcServerList" class="server-list"></div>
-      <div id="mcEmptyState" class="empty-state" style="display:none;">
+      <div id="mcEmptyState" class="empty-state" style="display:none;" data-i18n="mc.empty">
         Sélectionne le dossier contenant tes serveurs Minecraft pour commencer.
       </div>
 
       <div id="mcServerDetail" class="server-detail" style="display:none;">
-        <button class="back-btn" id="mcBackBtn">← Retour à la liste</button>
+        <button class="back-btn" id="mcBackBtn" data-i18n="common.back">← Retour à la liste</button>
         <h2>
           <span id="mcStatusDot" class="status-dot status-stopped"></span>
           <span id="mcDetailName"></span>
@@ -148,54 +278,121 @@
         <div id="mcErrorBanner" class="error-banner" style="display:none;"></div>
         <div id="mcStopWarningBanner" class="warning-banner" style="display:none;"></div>
         <div class="server-detail-actions">
-          <button id="mcLaunchBtn">▶ Lancer le serveur</button>
-          <button id="mcStopBtn" class="danger" disabled>■ Arrêter le serveur</button>
-          <button id="mcForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
+          <button id="mcLaunchBtn" data-i18n="server.launch">▶ Lancer le serveur</button>
+          <button id="mcStopBtn" class="danger" disabled data-i18n="server.stop">■ Arrêter le serveur</button>
+          <button id="mcForceStopBtn" class="danger" disabled data-i18n="server.forceStop">⛔ Forcer l'arrêt</button>
+          <button id="mcDeleteBtn" class="danger" data-i18n="server.delete">🗑 Supprimer le serveur</button>
           <span id="mcLaunchScriptInfo" class="hint-text"></span>
         </div>
-        <p class="hint-text" style="margin-top:-14px;margin-bottom:20px;">
+        <p class="hint-text" style="margin-top:-14px;margin-bottom:20px;" data-i18n-html="mc.stopHint">
           « Arrêter » envoie la commande <code>stop</code> (le serveur sauvegarde avant de quitter).
           « Forcer l'arrêt » tue immédiatement le script et Java — utile si la console reste bloquée
           en demandant d'appuyer sur Ctrl+C (un signal qu'on ne peut pas simuler via une commande texte).
         </p>
 
         <div class="detail-section">
-          <h3>Console</h3>
-          <div id="mcConsoleOutput" class="console-output"></div>
-          <div class="console-command-row">
-            <input type="text" id="mcCommandInput" placeholder="Commande (ex: say Bonjour, op Steve…)" disabled />
-            <button id="mcSendCommandBtn" disabled>Envoyer</button>
+          <h3 data-i18n="mc.playersTitle">Joueurs en ligne</h3>
+          <div class="server-detail-actions">
+            <span id="mcPlayersCount" class="mc-players-count">—</span>
+            <button id="mcPlayersRefreshBtn" data-i18n="common.refresh">⟳ Rafraîchir</button>
           </div>
-          <p class="hint-text">Le serveur doit être en cours d'exécution pour envoyer une commande.</p>
+          <div id="mcPlayersList" class="mc-players-list"></div>
         </div>
 
         <div class="detail-section">
-          <h3>Arguments de lancement (JVM)</h3>
+          <h3 data-i18n="common.console">Console</h3>
+          <div id="mcConsoleOutput" class="console-output"></div>
+          <div class="console-command-row">
+            <input type="text" id="mcCommandInput" placeholder="Commande (ex: say Bonjour, op Steve…)" data-i18n-ph="mc.cmdPh" disabled />
+            <button id="mcSendCommandBtn" disabled data-i18n="common.send">Envoyer</button>
+          </div>
+          <p class="hint-text" data-i18n="mc.cmdHint">Le serveur doit être en cours d'exécution pour envoyer une commande.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="mc.shareTitle">Partage (Hamachi)</h3>
+          <p class="hint-text" data-i18n="mc.shareHint">Pour jouer avec des amis via Hamachi : rejoignez le même réseau Hamachi, puis partagez-leur l'adresse ci-dessous.</p>
+          <div id="mcShareRow" class="mc-share-row">
+            <code id="mcShareAddress" class="mc-share-address">—</code>
+            <button id="mcShareCopyBtn" class="secondary" data-i18n="mc.shareCopy">📋 Copier</button>
+          </div>
+          <p id="mcShareNoHamachi" class="hint-text" style="display:none;" data-i18n="mc.shareNoHamachi">Aucun adaptateur Hamachi détecté. Installe et lance Hamachi, connecte-toi à un réseau, puis rafraîchis cette fiche.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="mc.backupsTitle">Sauvegardes du monde</h3>
+          <p class="hint-text" data-i18n="mc.backupsHint">Sauvegarde le(s) dossier(s) de monde dans « gg-backups ». Un serveur arrêté donne la sauvegarde la plus fiable ; en cours, les écritures sont figées le temps du zip.</p>
+          <div class="server-detail-actions">
+            <button id="mcBackupCreateBtn" data-i18n="mc.backupCreate">💾 Créer une sauvegarde</button>
+            <span id="mcBackupStatus" class="save-status"></span>
+          </div>
+          <div id="mcBackupList" class="mc-backup-list"></div>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="mc.accessTitle">Accès (whitelist / ops / bans)</h3>
+          <p class="hint-text" data-i18n="mc.accessHint">Serveur en cours : les modifications passent par la console (résolution du pseudo en ligne). Serveur arrêté : édition directe des fichiers (UUID récupéré via Mojang si possible).</p>
+          <div class="mc-access-grid">
+            <div class="mc-access-col">
+              <h4 data-i18n="mc.whitelist">Whitelist</h4>
+              <div id="mcWhitelistList" class="mc-access-list"></div>
+              <div class="mc-access-add">
+                <input type="text" id="mcWhitelistInput" placeholder="Pseudo" data-i18n-ph="mc.playerNamePh" />
+                <button id="mcWhitelistAddBtn" data-i18n="common.add">+ Ajouter</button>
+              </div>
+            </div>
+            <div class="mc-access-col">
+              <h4 data-i18n="mc.ops">Opérateurs</h4>
+              <div id="mcOpsList" class="mc-access-list"></div>
+              <div class="mc-access-add">
+                <input type="text" id="mcOpsInput" placeholder="Pseudo" data-i18n-ph="mc.playerNamePh" />
+                <button id="mcOpsAddBtn" data-i18n="common.add">+ Ajouter</button>
+              </div>
+            </div>
+            <div class="mc-access-col">
+              <h4 data-i18n="mc.bans">Bannis</h4>
+              <div id="mcBansList" class="mc-access-list"></div>
+              <div class="mc-access-add">
+                <input type="text" id="mcBansInput" placeholder="Pseudo" data-i18n-ph="mc.playerNamePh" />
+                <button id="mcBansAddBtn" class="danger" data-i18n="mc.banBtn">Bannir</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="mc.jvmTitle">Arguments de lancement (JVM)</h3>
           <p id="mcJvmArgsHint" class="hint-text"></p>
           <textarea id="mcJvmArgsTextarea" class="args-textarea" placeholder="-Xmx4G -Xms2G -XX:+UseG1GC"></textarea>
-          <button id="mcSaveArgsBtn">💾 Enregistrer les arguments</button>
+          <button id="mcSaveArgsBtn" data-i18n="mc.saveArgs">💾 Enregistrer les arguments</button>
           <span id="mcArgsSaveStatus" class="save-status"></span>
         </div>
 
         <div class="detail-section">
-          <h3>Propriétés du serveur (server.properties)</h3>
+          <h3 data-i18n="mc.propsTitle">Propriétés du serveur (server.properties)</h3>
           <div id="mcPropertiesForm" class="properties-form"></div>
-          <button id="mcSavePropertiesBtn">💾 Enregistrer les propriétés</button>
+          <button id="mcSavePropertiesBtn" data-i18n="mc.saveProps">💾 Enregistrer les propriétés</button>
           <span id="mcPropertiesSaveStatus" class="save-status"></span>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="view-mcprofiles" class="view">
+    <div id="subview-mcprofiles" class="subview active">
     <div class="topbar">
-      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> Minecraft Profiles</div>
+      <div class="topbar-title"><img src="assets/minecraft-tab-icon.png" class="title-icon" alt="" /> <span data-i18n="tab.mcprofiles">Minecraft Profiles</span></div>
       <div class="topbar-filters">
+        <div class="mcp-filter" id="mcpFilter">
+          <button class="mcp-filter-btn active" data-filter="all" data-i18n="profiles.all">Tous</button>
+          <button class="mcp-filter-btn" data-filter="modpack" data-i18n="profiles.modpack">Modpack</button>
+          <button class="mcp-filter-btn" data-filter="vanilla" data-i18n="profiles.vanilla">Vanilla</button>
+          <button class="mcp-filter-btn" data-filter="other" data-i18n="profiles.other">Autre</button>
+        </div>
         <span id="mcpDirLabel" class="folder-label"></span>
       </div>
       <div class="topbar-actions">
-        <button id="mcBrowseModpacksBtn" class="primary-highlight">🧩 Parcourir les modpacks</button>
-        <button id="mcpRefreshBtn">⟳ Rafraîchir</button>
+        <button id="mcBrowseModpacksBtn" class="primary-highlight" data-i18n="profiles.browse">🧩 Parcourir les modpacks</button>
+        <button id="mcpRefreshBtn" data-i18n="common.refresh">⟳ Rafraîchir</button>
       </div>
     </div>
 
@@ -203,17 +400,17 @@
     <div id="cfModal" class="modal-backdrop" style="display:none;">
       <div class="modal modal-xwide">
         <div class="cf-modal-header">
-          <div class="modal-title" style="margin-bottom:0;">🧩 Modpacks CurseForge</div>
-          <button id="cfCloseBtn" class="secondary">✕ Fermer</button>
+          <div class="modal-title" style="margin-bottom:0;" data-i18n="cf.title">🧩 Modpacks CurseForge</div>
+          <button id="cfCloseBtn" class="secondary" data-i18n="cf.close">✕ Fermer</button>
         </div>
 
         <div class="cf-toolbar">
-          <input type="text" id="cfSearchInput" placeholder="Rechercher un modpack…" />
+          <input type="text" id="cfSearchInput" placeholder="Rechercher un modpack…" data-i18n-ph="cf.searchPh" />
           <div class="cf-cat-dropdown">
             <button type="button" id="cfCategoryBtn" class="cf-cat-btn">Tous les types ▾</button>
             <div id="cfCategoryPanel" class="cf-cat-panel" style="display:none;"></div>
           </div>
-          <button id="cfSearchBtn">🔍 Rechercher</button>
+          <button id="cfSearchBtn" data-i18n="cf.search">🔍 Rechercher</button>
         </div>
 
         <div id="cfErrorBanner" class="error-banner" style="display:none;"></div>
@@ -224,91 +421,92 @@
         </div>
 
         <div id="cfGrid" class="cf-grid"></div>
-        <div id="cfEmpty" class="hint-text" style="display:none;padding:24px;text-align:center;">
+        <div id="cfEmpty" class="hint-text" style="display:none;padding:24px;text-align:center;" data-i18n="cf.empty">
           Aucun modpack trouvé.
         </div>
-        <div id="cfLoading" class="hint-text" style="display:none;padding:24px;text-align:center;">
+        <div id="cfLoading" class="hint-text" style="display:none;padding:24px;text-align:center;" data-i18n="cf.loading">
           Chargement…
         </div>
 
         <div class="cf-pagination">
-          <button id="cfPrevBtn" class="secondary" disabled>← Précédent</button>
+          <button id="cfPrevBtn" class="secondary" disabled data-i18n="cf.prev">← Précédent</button>
           <span id="cfPageInfo" class="hint-text"></span>
-          <button id="cfNextBtn" class="secondary" disabled>Suivant →</button>
+          <button id="cfNextBtn" class="secondary" disabled data-i18n="cf.next">Suivant →</button>
         </div>
       </div>
     </div>
 
     <div class="server-content">
-      <p class="hint-text" id="mcpIntro" style="margin-top:0;">
+      <p class="hint-text" id="mcpIntro" style="margin-top:0;" data-i18n="profiles.intro">
         Profils du launcher Minecraft officiel. Installe un modpack via « Parcourir les modpacks » :
         les mods, le loader (Forge/NeoForge/Fabric) et un profil dédié (avec l'icône du modpack) sont
         créés automatiquement.
       </p>
       <div id="mcpWarning" class="warning-banner" style="display:none;"></div>
       <div id="mcpProfilesList" class="cf-profiles-list"></div>
-      <div id="mcpEmpty" class="empty-state" style="display:none;position:static;padding:40px;">
+      <div id="mcpEmpty" class="empty-state" style="display:none;position:static;padding:40px;" data-i18n="profiles.empty">
         Aucun profil trouvé dans le launcher Minecraft.
       </div>
     </div>
-  </div>
+    </div><!-- /subview-mcprofiles -->
+  </div><!-- /view-minecraft (groupé) -->
 
   <div id="view-ark" class="view">
     <div class="topbar">
-      <div class="topbar-title"><img src="assets/ark-tab-icon.png" class="title-icon" alt="" /> Serveurs Ark</div>
+      <div class="topbar-title"><img src="assets/ark-tab-icon.png" class="title-icon" alt="" /> <span data-i18n="tab.ark">Serveurs Ark</span></div>
       <div class="topbar-filters">
-        <span id="arkRootFolderLabel" class="folder-label">Aucun dossier sélectionné</span>
+        <span id="arkRootFolderLabel" class="folder-label" data-i18n="common.noFolder">Aucun dossier sélectionné</span>
       </div>
       <div class="topbar-actions">
-        <button id="arkCreateServerBtn">✨ Créer un serveur</button>
-        <button id="arkChooseFolderBtn">📁 Choisir le dossier</button>
-        <button id="arkRefreshBtn">⟳ Rafraîchir</button>
+        <button id="arkCreateServerBtn" data-i18n="ark.createBtn">✨ Créer un serveur</button>
+        <button id="arkChooseFolderBtn" data-i18n="common.chooseFolder">📁 Choisir le dossier</button>
+        <button id="arkRefreshBtn" data-i18n="common.refresh">⟳ Rafraîchir</button>
       </div>
     </div>
 
     <div id="arkCreateServerModal" class="modal-backdrop" style="display:none;">
       <div class="modal modal-wide">
-        <div class="modal-title">✨ Créer un nouveau serveur Ark</div>
+        <div class="modal-title" data-i18n="ark.createTitle">✨ Créer un nouveau serveur Ark</div>
 
         <div id="arkCreateForm">
-          <p class="hint-text">
+          <p class="hint-text" data-i18n="ark.createIntro">
             Installe automatiquement un nouveau serveur dédié via SteamCMD, applique tes réglages,
-            puis le lance. Nécessite que SteamCMD soit déjà téléchargé (panneau ci-dessus) et un
+            puis le lance. Nécessite que SteamCMD soit déjà téléchargé (onglet SteamCMD) et un
             dossier racine sélectionné.
           </p>
 
           <div class="form-grid">
-            <label>Nom du dossier du serveur
-              <input type="text" id="arkCreateFolderName" placeholder="ex: MonServeurArk" />
+            <label><span data-i18n="ark.folderName">Nom du dossier du serveur</span>
+              <input type="text" id="arkCreateFolderName" placeholder="ex: MonServeurArk" data-i18n-ph="ark.phFolder" />
             </label>
-            <label>Édition
+            <label><span data-i18n="ark.edition">Édition</span>
               <select id="arkCreateEdition">
                 <option value="ascended">ARK: Survival Ascended</option>
                 <option value="evolved">ARK: Survival Evolved</option>
               </select>
             </label>
-            <label>Carte
+            <label><span data-i18n="ark.map">Carte</span>
               <select id="arkCreateMapSelect"></select>
             </label>
-            <label id="arkCreateCustomMapWrap" style="display:none;">Carte personnalisée
-              <input type="text" id="arkCreateCustomMapInput" placeholder="ex: MyModdedMap_WP" />
+            <label id="arkCreateCustomMapWrap" style="display:none;"><span data-i18n="ark.customMap">Carte personnalisée</span>
+              <input type="text" id="arkCreateCustomMapInput" placeholder="ex: MyModdedMap_WP" data-i18n-ph="ark.phCustomMap" />
             </label>
-            <label>Nom de session
-              <input type="text" id="arkCreateSessionName" value="Mon Serveur Ark" />
+            <label><span data-i18n="ark.session">Nom de session</span>
+              <input type="text" id="arkCreateSessionName" value="Mon Serveur Ark" data-i18n-value="ark.defaultSession" />
             </label>
-            <label>Mot de passe serveur
+            <label><span data-i18n="ark.serverPw">Mot de passe serveur</span>
               <input type="text" id="arkCreateServerPassword" />
             </label>
-            <label>Mot de passe admin
+            <label><span data-i18n="ark.adminPw">Mot de passe admin</span>
               <input type="text" id="arkCreateAdminPassword" />
             </label>
-            <label>Joueurs max
+            <label><span data-i18n="ark.maxPlayers">Joueurs max</span>
               <input type="number" id="arkCreateMaxPlayers" min="1" max="255" value="70" />
             </label>
-            <label>Port
+            <label><span data-i18n="ark.port">Port</span>
               <input type="number" id="arkCreatePort" value="7777" />
             </label>
-            <label>Query Port
+            <label><span data-i18n="ark.queryPort">Query Port</span>
               <input type="number" id="arkCreateQueryPort" value="27015" />
             </label>
           </div>
@@ -316,33 +514,33 @@
           <div class="form-grid">
             <label class="checkbox-field">
               <input type="checkbox" id="arkCreatePve" />
-              <span>Mode PvE (pas de combat JcJ)</span>
+              <span data-i18n="ark.pve">Mode PvE (pas de combat JcJ)</span>
             </label>
-            <label>Difficulté (0 à 1)
+            <label><span data-i18n="ark.difficulty">Difficulté (0 à 1)</span>
               <input type="number" id="arkCreateDifficulty" min="0" max="1" step="0.1" value="1" />
             </label>
-            <label>Niveau max des dinosaures sauvages
+            <label><span data-i18n="ark.maxDino">Niveau max des dinosaures sauvages</span>
               <input type="number" id="arkCreateMaxDinoLevel" min="30" step="30" value="150" />
             </label>
-            <label>Multiplicateur XP
+            <label><span data-i18n="ark.xp">Multiplicateur XP</span>
               <input type="number" id="arkCreateXpMultiplier" min="0" step="0.5" value="1" />
             </label>
-            <label>Multiplicateur domestication
+            <label><span data-i18n="ark.taming">Multiplicateur domestication</span>
               <input type="number" id="arkCreateTamingMultiplier" min="0" step="0.5" value="1" />
             </label>
-            <label>Multiplicateur récolte
+            <label><span data-i18n="ark.harvest">Multiplicateur récolte</span>
               <input type="number" id="arkCreateHarvestMultiplier" min="0" step="0.5" value="1" />
             </label>
           </div>
-          <p class="hint-text" style="margin-top:-8px;">
+          <p class="hint-text" style="margin-top:-8px;" data-i18n-html="ark.maxDinoHint">
             Le niveau maximum par défaut d'un serveur Ark officiel est 30. Réglé ici sur 150 (le
             standard le plus courant sur les serveurs communautaires), via le paramètre
             <code>OverrideOfficialDifficulty</code> calculé automatiquement (niveau max ≈ 30 × cette valeur).
           </p>
 
           <div class="modal-actions">
-            <button id="arkCreateCancelBtn" class="secondary">Annuler</button>
-            <button id="arkCreateConfirmBtn">✨ Créer et lancer</button>
+            <button id="arkCreateCancelBtn" class="secondary" data-i18n="common.cancel">Annuler</button>
+            <button id="arkCreateConfirmBtn" data-i18n="ark.createConfirm">✨ Créer et lancer</button>
           </div>
         </div>
 
@@ -350,44 +548,177 @@
           <p id="arkCreateProgressLabel" class="hint-text"></p>
           <p id="arkCreateFolderProgress" class="hint-text" style="color:#4cc2ff;"></p>
           <div id="arkCreateConsoleOutput" class="console-output"></div>
-          <p class="hint-text" style="margin-top:6px;">
+          <p class="hint-text" style="margin-top:6px;" data-i18n="ark.steamcmdNote">
             Note : SteamCMD n'affiche parfois aucune sortie pendant plusieurs minutes (il bufferise
             sa console quand elle n'est pas interactive) même quand le téléchargement avance
             normalement — fie-toi à l'indicateur de taille ci-dessus plutôt qu'à un écran vide.
           </p>
           <div id="arkCreateErrorBanner" class="error-banner" style="display:none;"></div>
           <div class="modal-actions">
-            <button id="arkCreateCloseBtn" class="secondary" style="display:none;">Fermer</button>
+            <button id="arkCreateCloseBtn" class="secondary" style="display:none;" data-i18n="common.close">Fermer</button>
           </div>
         </div>
       </div>
     </div>
 
     <div class="server-content">
+      <div class="server-list-wrapper">
+      <div id="arkServerList" class="server-list"></div>
+      <div id="arkEmptyState" class="empty-state" style="display:none;" data-i18n="ark.empty">
+        Sélectionne le dossier contenant tes serveurs Ark pour commencer.
+      </div>
+
+      <div id="arkServerDetail" class="server-detail" style="display:none;">
+        <button class="back-btn" id="arkBackBtn" data-i18n="common.back">← Retour à la liste</button>
+        <h2>
+          <span id="arkStatusDot" class="status-dot status-stopped"></span>
+          <span id="arkDetailName"></span>
+        </h2>
+        <div id="arkErrorBanner" class="error-banner" style="display:none;"></div>
+        <div id="arkStopWarningBanner" class="warning-banner" style="display:none;"></div>
+        <div class="server-detail-actions">
+          <button id="arkSetupBtn" class="primary-highlight" data-i18n="ark.setup">🛠 Setup Ark Server</button>
+          <button id="arkLaunchBtn" data-i18n="server.launch">▶ Lancer le serveur</button>
+          <button id="arkStopBtn" class="danger" disabled data-i18n="server.stop">■ Arrêter le serveur</button>
+          <button id="arkForceStopBtn" class="danger" disabled data-i18n="server.forceStop">⛔ Forcer l'arrêt</button>
+          <button id="arkGenerateScriptBtn" class="secondary" data-i18n="ark.genScript">📄 Générer un script .bat</button>
+          <button id="arkDeleteBtn" class="danger" data-i18n="server.delete">🗑 Supprimer le serveur</button>
+          <span id="arkLaunchInfo" class="hint-text"></span>
+        </div>
+        <p class="hint-text" style="margin-top:-14px;margin-bottom:8px;" data-i18n-html="ark.setupHint">
+          <strong>« Setup Ark Server »</strong> applique en un clic la carte/session ci-dessous et les
+          paramètres serveur courants, puis lance directement — pratique pour un serveur déjà installé,
+          sans repasser par SteamCMD.
+        </p>
+        <p class="hint-text" style="margin-top:-4px;margin-bottom:20px;" data-i18n="ark.stopHint">
+          « Arrêter » ferme le processus. « Forcer l'arrêt » tue immédiatement tout l'arbre de
+          processus (script + serveur) — utile si la console reste bloquée en demandant d'appuyer
+          sur Ctrl+C (un signal qu'on ne peut pas simuler via une commande texte). Attention : un
+          arrêt forcé ne laisse pas au serveur le temps de sauvegarder proprement.
+        </p>
+
+        <div class="detail-section">
+          <h3 data-i18n="ark.consoleRcon">Console (RCON)</h3>
+          <div id="arkConsoleOutput" class="console-output"></div>
+          <div class="console-command-row">
+            <input type="text" id="arkCommandInput" placeholder="Commande RCON (ex: Broadcast Bonjour)" data-i18n-ph="ark.rconCmdPh" disabled />
+            <button id="arkSendCommandBtn" disabled data-i18n="common.send">Envoyer</button>
+          </div>
+          <div class="quick-command-row">
+            <button class="quick-cmd secondary" id="arkRconSaveBtn" disabled data-i18n="ark.saveWorld">💾 Sauvegarder le monde</button>
+            <button class="quick-cmd secondary" id="arkRconBroadcastBtn" disabled data-i18n="ark.broadcast">📢 Message à tous</button>
+          </div>
+          <p class="hint-text" data-i18n="ark.consoleHint">Les commandes sont envoyées via RCON (le vrai canal d'administration Ark). Nécessite RCON activé (ci-dessous), un mot de passe admin défini, et le serveur en cours d'exécution.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="ark.players">Joueurs connectés</h3>
+          <div class="server-detail-actions">
+            <button id="arkRefreshPlayersBtn" disabled data-i18n="ark.refreshPlayers">⟳ Rafraîchir la liste</button>
+          </div>
+          <div id="arkPlayersList" class="ark-players-list"></div>
+          <p id="arkPlayersHint" class="hint-text" data-i18n="ark.playersHint">Nécessite RCON (activé ci-dessous) et un serveur en cours d'exécution.</p>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="ark.mapSession">Carte et session</h3>
+          <div class="form-grid">
+            <label><span data-i18n="ark.map">Carte</span>
+              <select id="arkMapSelect"></select>
+            </label>
+            <label id="arkCustomMapWrap" style="display:none;"><span data-i18n="ark.customMap">Carte personnalisée</span>
+              <input type="text" id="arkCustomMapInput" placeholder="ex: MyModdedMap_WP" data-i18n-ph="ark.phCustomMap" />
+            </label>
+            <label><span data-i18n="ark.session">Nom de session</span>
+              <input type="text" id="arkSessionName" />
+            </label>
+            <label><span data-i18n="ark.serverPw">Mot de passe serveur</span>
+              <input type="text" id="arkServerPassword" />
+            </label>
+            <label><span data-i18n="ark.adminPw">Mot de passe admin</span>
+              <input type="text" id="arkAdminPassword" />
+            </label>
+            <label><span data-i18n="ark.maxPlayers">Joueurs max</span>
+              <input type="number" id="arkMaxPlayers" min="1" max="255" />
+            </label>
+            <label><span data-i18n="ark.port">Port</span>
+              <input type="number" id="arkPort" />
+            </label>
+            <label><span data-i18n="ark.queryPort">Query Port</span>
+              <input type="number" id="arkQueryPort" />
+            </label>
+            <label><span data-i18n="ark.rconPort">Port RCON</span>
+              <input type="number" id="arkRconPort" />
+            </label>
+            <label class="checkbox-field">
+              <input type="checkbox" id="arkRconEnabled" />
+              <span data-i18n="ark.rconEnabled">Activer RCON (console / joueurs à distance)</span>
+            </label>
+          </div>
+          <label class="full-width"><span data-i18n="ark.extraSession">Paramètres de session additionnels (ex: RCONEnabled=True?RCONPort=27020)</span>
+            <input type="text" id="arkExtraSessionParams" />
+          </label>
+          <label class="full-width"><span data-i18n="ark.extraFlags">Arguments additionnels (ex: -server -log -NoBattlEye)</span>
+            <input type="text" id="arkExtraFlags" />
+          </label>
+          <button id="arkSaveLaunchConfigBtn" data-i18n="ark.saveLaunch">💾 Enregistrer la configuration de lancement</button>
+          <span id="arkLaunchSaveStatus" class="save-status"></span>
+        </div>
+
+        <div class="detail-section">
+          <h3 data-i18n="ark.commonSettings">Paramètres serveur courants</h3>
+          <div id="arkCommonSettingsForm" class="properties-form"></div>
+          <button id="arkSaveCommonSettingsBtn" data-i18n="ark.saveCommon">💾 Enregistrer ces paramètres</button>
+          <span id="arkCommonSaveStatus" class="save-status"></span>
+        </div>
+
+        <div class="detail-section">
+          <details>
+            <summary data-i18n="ark.advanced">Paramètres avancés (tous les réglages ServerSettings/SessionSettings)</summary>
+            <div id="arkAdvancedForm" class="properties-form"></div>
+            <div class="add-entry-row">
+              <input type="text" id="arkNewKeyInput" placeholder="Nouvelle clé (ex: bDisableStructurePlacementCollision)" data-i18n-ph="ark.phNewKey" />
+              <input type="text" id="arkNewValueInput" placeholder="Valeur" data-i18n-ph="ark.phNewValue" />
+              <button id="arkAddEntryBtn" data-i18n="common.add">+ Ajouter</button>
+            </div>
+            <button id="arkSaveAdvancedBtn" data-i18n="ark.saveAdvanced">💾 Enregistrer les paramètres avancés</button>
+            <span id="arkAdvancedSaveStatus" class="save-status"></span>
+          </details>
+        </div>
+      </div>
+      </div><!-- /server-list-wrapper -->
+    </div>
+  </div>
+
+  <div id="view-steamcmd" class="view">
+    <div class="topbar">
+      <div class="topbar-title"><span class="cmd-icon title-cmd-icon">&gt;_</span> <span data-i18n="tab.steamcmd">SteamCMD</span></div>
+    </div>
+    <div class="server-content">
       <div class="detail-section">
         <h3>
           <span id="steamcmdStatusDot" class="status-dot status-stopped"></span>
           SteamCMD
         </h3>
-        <p class="hint-text">
+        <p class="hint-text" data-i18n="steamcmd.desc">
           Outil en ligne de commande officiel de Valve, pratique pour installer ou mettre à jour
           un serveur dédié Ark (ou tout autre jeu) sans passer par le client Steam complet.
         </p>
 
         <div id="steamcmdNotInstalled">
-          <p class="hint-text">SteamCMD n'est pas encore installé.</p>
-          <button id="steamcmdDownloadBtn">⬇ Télécharger SteamCMD</button>
+          <p class="hint-text" data-i18n="steamcmd.notInstalled">SteamCMD n'est pas encore installé.</p>
+          <button id="steamcmdDownloadBtn" data-i18n="steamcmd.download">⬇ Télécharger SteamCMD</button>
           <span id="steamcmdDownloadStatus" class="save-status"></span>
         </div>
 
         <div id="steamcmdInstalled" style="display:none;">
           <div class="server-detail-actions">
-            <button id="steamcmdLaunchBtn">▶ Lancer SteamCMD</button>
-            <button id="steamcmdStopBtn" class="danger" disabled>■ Arrêter</button>
-            <button id="steamcmdForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
-            <button id="steamcmdResetBtn" class="secondary">🔄 Réinitialiser SteamCMD</button>
+            <button id="steamcmdLaunchBtn" data-i18n="steamcmd.launch">▶ Lancer SteamCMD</button>
+            <button id="steamcmdStopBtn" class="danger" disabled data-i18n="steamcmd.stop">■ Arrêter</button>
+            <button id="steamcmdForceStopBtn" class="danger" disabled data-i18n="server.forceStop">⛔ Forcer l'arrêt</button>
+            <button id="steamcmdResetBtn" class="secondary" data-i18n="steamcmd.reset">🔄 Réinitialiser SteamCMD</button>
           </div>
-          <p class="hint-text" style="margin-top:-14px;margin-bottom:16px;">
+          <p class="hint-text" style="margin-top:-14px;margin-bottom:16px;" data-i18n-html="steamcmd.resetHint">
             En cas d'erreur du type <em>« didn't shutdown cleanly »</em> ou <em>« missing configuration »</em>
             lors d'une installation, les fichiers internes de SteamCMD sont probablement corrompus
             (souvent après un arrêt brutal). « Réinitialiser SteamCMD » supprime tout et permet de
@@ -399,167 +730,18 @@
           <div id="steamcmdConsoleOutput" class="console-output"></div>
 
           <div class="console-command-row">
-            <input type="text" id="steamcmdCommandInput" placeholder="Commande (ex: login anonymous)" disabled />
-            <button id="steamcmdSendCommandBtn" disabled>Envoyer</button>
+            <input type="text" id="steamcmdCommandInput" placeholder="Commande (ex: login anonymous)" data-i18n-ph="steamcmd.cmdPh" disabled />
+            <button id="steamcmdSendCommandBtn" disabled data-i18n="common.send">Envoyer</button>
           </div>
 
           <div class="quick-command-row">
-            <span class="hint-text">Raccourcis (remplissent le champ, à toi de valider) :</span>
+            <span class="hint-text" data-i18n="steamcmd.shortcuts">Raccourcis (remplissent le champ, à toi de valider) :</span>
             <button class="quick-cmd secondary" data-cmd="login anonymous">login anonymous</button>
-            <button class="quick-cmd secondary" data-cmd="app_update 2430930 validate">MAJ Ark Ascended (2430930)</button>
-            <button class="quick-cmd secondary" data-cmd="app_update 376030 validate">MAJ Ark Evolved (376030)</button>
+            <button class="quick-cmd secondary" data-cmd="app_update 2430930 validate" data-i18n="steamcmd.updAscended">MAJ Ark Ascended (2430930)</button>
+            <button class="quick-cmd secondary" data-cmd="app_update 376030 validate" data-i18n="steamcmd.updEvolved">MAJ Ark Evolved (376030)</button>
             <button class="quick-cmd secondary" data-cmd="quit">quit</button>
           </div>
         </div>
-      </div>
-
-      <div class="server-list-wrapper">
-      <div id="arkServerList" class="server-list"></div>
-      <div id="arkEmptyState" class="empty-state" style="display:none;">
-        Sélectionne le dossier contenant tes serveurs Ark pour commencer.
-      </div>
-
-      <div id="arkServerDetail" class="server-detail" style="display:none;">
-        <button class="back-btn" id="arkBackBtn">← Retour à la liste</button>
-        <h2>
-          <span id="arkStatusDot" class="status-dot status-stopped"></span>
-          <span id="arkDetailName"></span>
-        </h2>
-        <div id="arkErrorBanner" class="error-banner" style="display:none;"></div>
-        <div id="arkStopWarningBanner" class="warning-banner" style="display:none;"></div>
-        <div class="server-detail-actions">
-          <button id="arkSetupBtn" class="primary-highlight">🛠 Setup Ark Server</button>
-          <button id="arkLaunchBtn">▶ Lancer le serveur</button>
-          <button id="arkStopBtn" class="danger" disabled>■ Arrêter le serveur</button>
-          <button id="arkForceStopBtn" class="danger" disabled>⛔ Forcer l'arrêt</button>
-          <button id="arkGenerateScriptBtn" class="secondary">📄 Générer un script .bat</button>
-          <span id="arkLaunchInfo" class="hint-text"></span>
-        </div>
-        <p class="hint-text" style="margin-top:-14px;margin-bottom:8px;">
-          <strong>« Setup Ark Server »</strong> applique en un clic la carte/session ci-dessous et les
-          paramètres serveur courants, puis lance directement — pratique pour un serveur déjà installé,
-          sans repasser par SteamCMD.
-        </p>
-        <p class="hint-text" style="margin-top:-4px;margin-bottom:20px;">
-          « Arrêter » ferme le processus. « Forcer l'arrêt » tue immédiatement tout l'arbre de
-          processus (script + serveur) — utile si la console reste bloquée en demandant d'appuyer
-          sur Ctrl+C (un signal qu'on ne peut pas simuler via une commande texte). Attention : un
-          arrêt forcé ne laisse pas au serveur le temps de sauvegarder proprement.
-        </p>
-
-        <div class="detail-section">
-          <h3>Console</h3>
-          <div id="arkConsoleOutput" class="console-output"></div>
-          <div class="console-command-row">
-            <input type="text" id="arkCommandInput" placeholder="Commande" disabled />
-            <button id="arkSendCommandBtn" disabled>Envoyer</button>
-          </div>
-          <p class="hint-text">Le serveur doit être en cours d'exécution pour envoyer une commande. Note : contrairement à Minecraft, les serveurs Ark ne lisent généralement pas de commandes via cette console (ils utilisent le protocole RCON) — l'envoi peut donc n'avoir aucun effet selon ta configuration.</p>
-        </div>
-
-        <div class="detail-section">
-          <h3>Carte et session</h3>
-          <div class="form-grid">
-            <label>Carte
-              <select id="arkMapSelect"></select>
-            </label>
-            <label id="arkCustomMapWrap" style="display:none;">Carte personnalisée
-              <input type="text" id="arkCustomMapInput" placeholder="ex: MyModdedMap_WP" />
-            </label>
-            <label>Nom de session
-              <input type="text" id="arkSessionName" />
-            </label>
-            <label>Mot de passe serveur
-              <input type="text" id="arkServerPassword" />
-            </label>
-            <label>Mot de passe admin
-              <input type="text" id="arkAdminPassword" />
-            </label>
-            <label>Joueurs max
-              <input type="number" id="arkMaxPlayers" min="1" max="255" />
-            </label>
-            <label>Port
-              <input type="number" id="arkPort" />
-            </label>
-            <label>Query Port
-              <input type="number" id="arkQueryPort" />
-            </label>
-          </div>
-          <label class="full-width">Paramètres de session additionnels (ex: RCONEnabled=True?RCONPort=27020)
-            <input type="text" id="arkExtraSessionParams" />
-          </label>
-          <label class="full-width">Arguments additionnels (ex: -server -log -NoBattlEye)
-            <input type="text" id="arkExtraFlags" />
-          </label>
-          <button id="arkSaveLaunchConfigBtn">💾 Enregistrer la configuration de lancement</button>
-          <span id="arkLaunchSaveStatus" class="save-status"></span>
-        </div>
-
-        <div class="detail-section">
-          <h3>Paramètres serveur courants</h3>
-          <div id="arkCommonSettingsForm" class="properties-form"></div>
-          <button id="arkSaveCommonSettingsBtn">💾 Enregistrer ces paramètres</button>
-          <span id="arkCommonSaveStatus" class="save-status"></span>
-        </div>
-
-        <div class="detail-section">
-          <details>
-            <summary>Paramètres avancés (tous les réglages ServerSettings/SessionSettings)</summary>
-            <div id="arkAdvancedForm" class="properties-form"></div>
-            <div class="add-entry-row">
-              <input type="text" id="arkNewKeyInput" placeholder="Nouvelle clé (ex: bDisableStructurePlacementCollision)" />
-              <input type="text" id="arkNewValueInput" placeholder="Valeur" />
-              <button id="arkAddEntryBtn">+ Ajouter</button>
-            </div>
-            <button id="arkSaveAdvancedBtn">💾 Enregistrer les paramètres avancés</button>
-            <span id="arkAdvancedSaveStatus" class="save-status"></span>
-          </details>
-        </div>
-      </div>
-      </div><!-- /server-list-wrapper -->
-    </div>
-  </div>
-
-  <div id="view-performance" class="view">
-    <div class="topbar">
-      <div class="topbar-title"><img src="assets/perf-tab-icon.png" class="title-icon" alt="" /> Performance</div>
-      <div class="topbar-filters">
-        <span id="perfUpdatedLabel" class="folder-label"></span>
-      </div>
-    </div>
-
-    <div class="server-content">
-      <div class="perf-grid">
-
-        <div class="detail-section perf-card">
-          <h3>Processeur (CPU)</h3>
-          <div class="perf-big-number" id="perfCpuPercent">—</div>
-          <div class="perf-bar-track"><div id="perfCpuBar" class="perf-bar-fill"></div></div>
-          <p class="hint-text" id="perfCpuModel"></p>
-          <div id="perfCpuCores" class="perf-cores"></div>
-        </div>
-
-        <div class="detail-section perf-card">
-          <h3>Mémoire (RAM)</h3>
-          <div class="perf-big-number" id="perfRamPercent">—</div>
-          <div class="perf-bar-track"><div id="perfRamBar" class="perf-bar-fill"></div></div>
-          <p class="hint-text" id="perfRamDetail"></p>
-        </div>
-
-        <div class="detail-section perf-card">
-          <h3>Carte graphique (GPU)</h3>
-          <div class="perf-big-number" id="perfGpuPercent">—</div>
-          <div class="perf-bar-track"><div id="perfGpuBar" class="perf-bar-fill"></div></div>
-          <div id="perfGpuList" class="hint-text"></div>
-          <p id="perfGpuEmpty" class="hint-text" style="display:none;">Aucune carte graphique détectée.</p>
-        </div>
-
-        <div class="detail-section perf-card perf-card-wide">
-          <h3>Disques</h3>
-          <div id="perfDisksList"></div>
-          <p id="perfDisksEmpty" class="hint-text" style="display:none;">Impossible de lire l'état des disques.</p>
-        </div>
-
       </div>
     </div>
   </div>
@@ -572,5 +754,6 @@
   <script src="ark.js"></script>
   <script src="steamcmd.js"></script>
   <script src="performance.js"></script>
+  <script src="dashboard.js"></script>
 </body>
 </html>

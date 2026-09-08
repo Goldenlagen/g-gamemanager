@@ -63,7 +63,7 @@ function getDiskUsage() {
   return new Promise((resolve) => {
     const script =
       'Get-CimInstance -ClassName Win32_LogicalDisk -Filter "DriveType=3" | ' +
-      'Select-Object DeviceID,Size,FreeSpace | ConvertTo-Json -Compress';
+      'Select-Object DeviceID,VolumeName,Size,FreeSpace | ConvertTo-Json -Compress';
 
     execFile(
       'powershell.exe',
@@ -87,6 +87,7 @@ function getDiskUsage() {
               const usedBytes = totalBytes - freeBytes;
               return {
                 drive: d.DeviceID,
+                name: (d.VolumeName || '').trim(),
                 totalBytes,
                 usedBytes,
                 freeBytes,
@@ -159,10 +160,80 @@ foreach ($gpu in $gpus) {
   });
 }
 
-async function getSnapshot() {
-  const [cpu, disks, gpu] = await Promise.all([getCpuUsage(), getDiskUsage(), getGpuInfo()]);
-  const memory = getMemoryUsage();
-  return { cpu, memory, disks, gpu, timestamp: Date.now() };
+/**
+ * Renvoie les processus qui consomment le plus (façon Gestionnaire des tâches) :
+ * on échantillonne le temps CPU cumulé de chaque processus à 500 ms d'intervalle
+ * pour obtenir un taux CPU instantané (rapporté à l'ensemble des cœurs), et on
+ * remonte aussi la mémoire de travail. Les processus sont regroupés par nom
+ * (ex: tous les "chrome" additionnés). Best-effort : en cas d'échec on renvoie [].
+ */
+function getTopProcesses() {
+  return new Promise((resolve) => {
+    const script = `
+$ErrorActionPreference = 'SilentlyContinue'
+$cpuCount = [Environment]::ProcessorCount
+function Snap {
+  Get-Process | Group-Object -Property ProcessName | ForEach-Object {
+    [PSCustomObject]@{
+      Name = $_.Name
+      CPU  = (($_.Group | Measure-Object CPU -Sum).Sum)
+      WS   = (($_.Group | Measure-Object WorkingSet64 -Sum).Sum)
+    }
+  }
+}
+$s1 = Snap
+$t1 = @{}
+foreach ($p in $s1) { $t1[$p.Name] = $p.CPU }
+Start-Sleep -Milliseconds 500
+$s2 = Snap
+$res = foreach ($p in $s2) {
+  $prev = $t1[$p.Name]
+  $delta = if ($prev -ne $null) { $p.CPU - $prev } else { 0 }
+  $pct = if ($delta -gt 0) { [math]::Round(($delta / (0.5 * $cpuCount)) * 100, 1) } else { 0 }
+  if ($pct -gt 100) { $pct = 100 }
+  [PSCustomObject]@{ name = $p.Name; cpuPercent = $pct; memBytes = [int64]$p.WS }
+}
+$res | Sort-Object @{Expression='cpuPercent';Descending=$true}, @{Expression='memBytes';Descending=$true} |
+  Select-Object -First 6 | ConvertTo-Json -Compress -Depth 3
+`.trim();
+
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { windowsHide: true, timeout: 8000 },
+      (err, stdout) => {
+        if (err) {
+          resolve([]);
+          return;
+        }
+        try {
+          let parsed = JSON.parse(stdout);
+          if (!Array.isArray(parsed)) parsed = [parsed]; // un seul résultat -> objet
+          const procs = parsed
+            .filter((p) => p && p.name)
+            .map((p) => ({
+              name: p.name,
+              cpuPercent: typeof p.cpuPercent === 'number' ? p.cpuPercent : 0,
+              memBytes: p.memBytes || 0,
+            }));
+          resolve(procs);
+        } catch (e) {
+          resolve([]);
+        }
+      }
+    );
+  });
 }
 
-module.exports = { getCpuUsage, getMemoryUsage, getDiskUsage, getGpuInfo, getSnapshot };
+async function getSnapshot() {
+  const [cpu, disks, gpu, processes] = await Promise.all([
+    getCpuUsage(),
+    getDiskUsage(),
+    getGpuInfo(),
+    getTopProcesses(),
+  ]);
+  const memory = getMemoryUsage();
+  return { cpu, memory, disks, gpu, processes, timestamp: Date.now() };
+}
+
+module.exports = { getCpuUsage, getMemoryUsage, getDiskUsage, getGpuInfo, getTopProcesses, getSnapshot };

@@ -164,6 +164,16 @@ async function searchModpacks(opts = {}) {
   };
 }
 
+// ---- Logo d'un modpack (pour l'onglet Profils) ----
+
+async function getModLogo(modId) {
+  const res = await apiGetJson('/v1/mods/' + modId);
+  if (!res.ok || !res.data || !res.data.data) return { ok: false, error: res.error || 'Modpack introuvable.' };
+  const mod = res.data.data;
+  const thumbnailUrl = mod.logo ? mod.logo.thumbnailUrl || mod.logo.url || null : null;
+  return { ok: true, thumbnailUrl, name: mod.name || null };
+}
+
 // ---- Liste des versions (fichiers) d'un modpack ----
 
 async function getModpackFiles(modId) {
@@ -371,8 +381,9 @@ async function buildIconDataUri(thumbnailUrl, tmpDir) {
     await launcher.downloadToFile(thumbnailUrl, iconPath, { 'x-api-key': API_KEY });
     const buf = fs.readFileSync(iconPath);
     // Le launcher officiel accepte une data URI. On borne la taille pour éviter
-    // un launcher_profiles.json démesuré (au-delà, on garde l'icône par défaut).
-    if (buf.length > 400 * 1024) return null;
+    // un launcher_profiles.json démesuré (au-delà, on garde l'icône par défaut ;
+    // l'onglet Profils affichera de toute façon le logo CurseForge en repli).
+    if (buf.length > 1024 * 1024) return null;
     const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.gif' ? 'image/gif' : 'image/png';
     return 'data:' + mime + ';base64,' + buf.toString('base64');
   } catch (e) {
@@ -422,9 +433,24 @@ async function downloadServerPack(opts) {
   if (fileName.toLowerCase().endsWith('.zip')) {
     emitProgress({ modId, kind: 'serverpack', phase: 'extracting', received: 0, total: 0 });
     try {
-      await extractZip(zipPath, destDir);
-      // Si l'archive s'est extraite dans un unique sous-dossier, on l'aplati.
-      flattenSingleWrapper(destDir);
+      // Extraction dans un sous-dossier temporaire VIDE (jamais directement dans
+      // destDir) : évite l'erreur « already exists » d'Expand-Archive quand la
+      // destination n'est pas parfaitement vierge, et gère proprement les
+      // dossiers « enveloppe ». On COPIE ensuite le contenu dans destDir (copie
+      // plutôt que renommage : robuste même si tmp et destination sont sur des
+      // disques différents, ce qui ferait échouer un rename).
+      const extractDir = path.join(tmpDir, 'extract');
+      fs.mkdirSync(extractDir, { recursive: true });
+      await extractZip(zipPath, extractDir);
+
+      let contentRoot = extractDir;
+      const top = fs.readdirSync(extractDir, { withFileTypes: true });
+      if (top.length === 1 && top[0].isDirectory()) {
+        contentRoot = path.join(extractDir, top[0].name); // aplatissement du dossier enveloppe
+      }
+      for (const entry of fs.readdirSync(contentRoot)) {
+        copyRecursive(path.join(contentRoot, entry), path.join(destDir, entry));
+      }
     } catch (e) {
       rmDirSafe(tmpDir);
       return { ok: false, error: "Téléchargé mais extraction échouée : " + e.message, destDir };
@@ -607,6 +633,7 @@ module.exports = {
   setProgressBroadcaster,
   searchModpacks,
   getModpackFiles,
+  getModLogo,
   getCategories,
   downloadServerPack,
   installModpackProfile,

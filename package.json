@@ -11,6 +11,9 @@
     "start": "electron .",
     "dist": "electron-builder --win"
   },
+  "dependencies": {
+    "electron-updater": "^6.3.9"
+  },
   "devDependencies": {
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3"
@@ -19,13 +22,20 @@
     "appId": "com.goldenlagen.ggamemanager",
     "productName": "G-GameManager",
     "icon": "build/icon.ico",
+    "//publish": "HÉBERGEMENT À BRANCHER : renseigner un fournisseur ci-dessous puis publier via electron-builder. Exemple GitHub : { \"provider\": \"github\", \"owner\": \"Goldenlagen\", \"repo\": \"g-gamemanager\" }. Exemple serveur générique : { \"provider\": \"generic\", \"url\": \"https://exemple.com/updates/\" }.",
+    "publish": {
+      "provider": "github",
+      "owner": "Goldenlagen",
+      "repo": "g-gamemanager"
+    },
     "files": [
       "main.js",
       "preload.js",
       "renderer/**/*",
       "scanners/**/*",
       "servers/**/*",
-      "services/**/*"
+      "services/**/*",
+      "sound/**/*"
     ],
     "asarUnpack": [
       "scanners/*.ps1"

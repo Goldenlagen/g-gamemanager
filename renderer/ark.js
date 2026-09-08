@@ -2,16 +2,22 @@
 
 (function () {
   const COMMON_SETTINGS = [
-    { key: 'ServerPVE', label: 'Mode PvE (pas de combat JcJ)', type: 'boolean' },
-    { key: 'ServerHardcore', label: 'Mode Hardcore', type: 'boolean' },
-    { key: 'AllowThirdPersonPlayer', label: 'Vue à la troisième personne autorisée', type: 'boolean' },
-    { key: 'DifficultyOffset', label: 'Difficulté (0 à 1)', type: 'number' },
-    { key: 'OverrideOfficialDifficulty', label: 'Niveau max dinos sauvages ÷ 30 (5 = niveau 150)', type: 'number' },
-    { key: 'XPMultiplier', label: 'Multiplicateur XP', type: 'number' },
-    { key: 'TamingSpeedMultiplier', label: 'Multiplicateur vitesse de domestication', type: 'number' },
-    { key: 'HarvestAmountMultiplier', label: 'Multiplicateur ressources récoltées', type: 'number' },
-    { key: 'DayCycleSpeedScale', label: 'Vitesse du cycle jour/nuit', type: 'number' },
+    { key: 'ServerPVE', labelKey: 'arkcs.pve', type: 'boolean' },
+    { key: 'ServerHardcore', labelKey: 'arkcs.hardcore', type: 'boolean' },
+    { key: 'AllowThirdPersonPlayer', labelKey: 'arkcs.thirdPerson', type: 'boolean' },
+    { key: 'DifficultyOffset', labelKey: 'arkcs.difficulty', type: 'number' },
+    { key: 'OverrideOfficialDifficulty', labelKey: 'arkcs.override', type: 'number' },
+    { key: 'XPMultiplier', labelKey: 'arkcs.xp', type: 'number' },
+    { key: 'TamingSpeedMultiplier', labelKey: 'arkcs.taming', type: 'number' },
+    { key: 'HarvestAmountMultiplier', labelKey: 'arkcs.harvest', type: 'number' },
+    { key: 'DayCycleSpeedScale', labelKey: 'arkcs.dayCycle', type: 'number' },
   ];
+
+  // Traduction (repli sur la clé si absente).
+  function tr(key, params) {
+    const v = window.AppSettings ? window.AppSettings.t(key, params) : null;
+    return v != null ? v : key;
+  }
 
   const state = {
     rootFolder: null,
@@ -43,6 +49,7 @@
     stopBtn: document.getElementById('arkStopBtn'),
     forceStopBtn: document.getElementById('arkForceStopBtn'),
     generateScriptBtn: document.getElementById('arkGenerateScriptBtn'),
+    deleteBtn: document.getElementById('arkDeleteBtn'),
     launchInfo: document.getElementById('arkLaunchInfo'),
 
     mapSelect: document.getElementById('arkMapSelect'),
@@ -54,6 +61,12 @@
     maxPlayers: document.getElementById('arkMaxPlayers'),
     port: document.getElementById('arkPort'),
     queryPort: document.getElementById('arkQueryPort'),
+    rconEnabled: document.getElementById('arkRconEnabled'),
+    rconPort: document.getElementById('arkRconPort'),
+    rconSaveBtn: document.getElementById('arkRconSaveBtn'),
+    rconBroadcastBtn: document.getElementById('arkRconBroadcastBtn'),
+    refreshPlayersBtn: document.getElementById('arkRefreshPlayersBtn'),
+    playersList: document.getElementById('arkPlayersList'),
     extraSessionParams: document.getElementById('arkExtraSessionParams'),
     extraFlags: document.getElementById('arkExtraFlags'),
     saveLaunchConfigBtn: document.getElementById('arkSaveLaunchConfigBtn'),
@@ -96,6 +109,9 @@
     const canSendCommand = status === 'running';
     el.commandInput.disabled = !canSendCommand;
     el.sendCommandBtn.disabled = !canSendCommand;
+    el.rconSaveBtn.disabled = !canSendCommand;
+    el.rconBroadcastBtn.disabled = !canSendCommand;
+    el.refreshPlayersBtn.disabled = !canSendCommand;
 
     if (!running) clearStopWarning();
 
@@ -120,7 +136,11 @@
   }
 
   function resetConsole() {
-    el.consoleOutput.innerHTML = '<div class="console-empty">Aucune sortie pour le moment. Lance le serveur pour voir la console ici.</div>';
+    const div = document.createElement('div');
+    div.className = 'console-empty';
+    div.textContent = tr('server.consoleEmpty');
+    el.consoleOutput.innerHTML = '';
+    el.consoleOutput.appendChild(div);
   }
 
   window.api.onServerLog(({ serverId: id, lines }) => {
@@ -153,7 +173,7 @@
     }
     const customOpt = document.createElement('option');
     customOpt.value = CUSTOM_MAP_VALUE;
-    customOpt.textContent = 'Autre (carte personnalisée / moddée)…';
+    customOpt.textContent = tr('ark.customMapOption');
     selectEl.appendChild(customOpt);
   }
 
@@ -180,6 +200,8 @@
     el.maxPlayers.value = config.maxPlayers ?? 70;
     el.port.value = config.port ?? 7777;
     el.queryPort.value = config.queryPort ?? 27015;
+    el.rconEnabled.checked = config.rconEnabled !== false;
+    el.rconPort.value = config.rconPort ?? 27020;
     el.extraSessionParams.value = config.extraSessionParams || '';
     el.extraFlags.value = config.extraFlags || '';
   }
@@ -193,6 +215,8 @@
       maxPlayers: Number(el.maxPlayers.value) || 70,
       port: Number(el.port.value) || 7777,
       queryPort: Number(el.queryPort.value) || 27015,
+      rconEnabled: el.rconEnabled.checked,
+      rconPort: Number(el.rconPort.value) || 27020,
       extraSessionParams: el.extraSessionParams.value.trim(),
       extraFlags: el.extraFlags.value.trim(),
     };
@@ -218,17 +242,17 @@
         checkbox.checked = currentValue.toLowerCase() === 'true';
         label.appendChild(checkbox);
         const span = document.createElement('span');
-        span.textContent = def.label;
+        span.textContent = tr(def.labelKey);
         label.appendChild(span);
       } else {
         const span = document.createElement('span');
-        span.textContent = def.label;
+        span.textContent = tr(def.labelKey);
         label.appendChild(span);
         const input = document.createElement('input');
         input.type = 'text';
         input.id = `arkCommon_${def.key}`;
         input.value = currentValue;
-        input.placeholder = '(non défini)';
+        input.placeholder = tr('ark.settingPlaceholder');
         label.appendChild(input);
       }
 
@@ -268,7 +292,7 @@
     if (serverSettingsEntries.length === 0) {
       const hint = document.createElement('p');
       hint.className = 'hint-text';
-      hint.textContent = 'Aucun paramètre trouvé dans [ServerSettings].';
+      hint.textContent = tr('ark.noAdvancedParams');
       el.advancedForm.appendChild(hint);
     }
   }
@@ -294,11 +318,15 @@
     el.serverDetail.style.display = 'block';
     el.detailName.textContent = server.name;
     resetConsole();
+    el.playersList.innerHTML = '';
     clearStopWarning();
 
+    const editionLabel = server.edition === 'ascended'
+      ? 'Ascended'
+      : server.edition === 'evolved' ? 'Evolved' : tr('ark.editionUnknown');
     el.launchInfo.textContent = server.executable
-      ? `Exécutable détecté : ${server.executable.split(/[\\/]/).pop()} (${server.edition === 'ascended' ? 'Ascended' : server.edition === 'evolved' ? 'Evolved' : 'édition inconnue'})`
-      : "Aucun exécutable serveur trouvé dans ShooterGame\\Binaries\\Win64.";
+      ? tr('ark.exeDetected', { name: server.executable.split(/[\\/]/).pop(), edition: editionLabel })
+      : tr('ark.noExe');
     el.generateScriptBtn.disabled = !server.executable;
 
     const current = await window.api.arkGetServerStatus(server.path);
@@ -330,13 +358,13 @@
     state.cardDots.clear();
 
     if (!state.rootFolder) {
-      el.emptyState.textContent = 'Sélectionne le dossier contenant tes serveurs Ark pour commencer.';
+      el.emptyState.textContent = tr('ark.empty');
       el.emptyState.style.display = 'flex';
       return;
     }
 
     if (state.servers.length === 0) {
-      el.emptyState.textContent = 'Aucun serveur Ark détecté dans ce dossier (recherche d\'un sous-dossier "ShooterGame").';
+      el.emptyState.textContent = tr('ark.noServers');
       el.emptyState.style.display = 'flex';
       return;
     }
@@ -358,13 +386,13 @@
       const meta = document.createElement('div');
       meta.className = 'server-card-meta';
       meta.innerHTML = [
-        server.executable ? 'Exécutable trouvé' : 'Exécutable introuvable',
-        server.hasConfig ? 'Configuration trouvée' : 'Configuration absente',
+        server.executable ? tr('ark.exeFound') : tr('ark.exeNotFound'),
+        server.hasConfig ? tr('ark.configFound') : tr('ark.configAbsent'),
       ].join('<br>');
 
       card.appendChild(title);
       card.appendChild(meta);
-      card.addEventListener('click', () => { window.GameSounds?.navigate(); openDetail(server); });
+      card.addEventListener('click', () => { window.GameSounds?.serverItem(); openDetail(server); });
 
       el.serverList.appendChild(card);
 
@@ -376,7 +404,7 @@
 
   async function refreshList() {
     if (!state.rootFolder) {
-      el.emptyState.textContent = 'Recherche automatique de ton installation Ark en cours… (peut prendre quelques instants au premier lancement)';
+      el.emptyState.textContent = tr('ark.autoDetecting');
       el.emptyState.style.display = 'flex';
     }
 
@@ -384,7 +412,7 @@
     state.rootFolder = result.rootFolder;
     state.servers = result.servers;
 
-    el.rootFolderLabel.textContent = state.rootFolder || 'Aucun dossier sélectionné';
+    el.rootFolderLabel.textContent = state.rootFolder || tr('common.noFolder');
     renderServerList();
   }
 
@@ -397,12 +425,30 @@
   el.refreshBtn.addEventListener('click', () => { window.GameSounds?.toggle(); refreshList(); });
   el.backBtn.addEventListener('click', () => { window.GameSounds?.back(); closeDetail(); });
 
+  el.deleteBtn.addEventListener('click', async () => {
+    if (!state.currentServer) return;
+    const s = state.currentServer;
+    const confirmed = confirm(tr('ark.confirmDelete', { name: s.name }));
+    if (!confirmed) return;
+    window.GameSounds?.back();
+    el.deleteBtn.disabled = true;
+    const res = await window.api.arkDeleteServer(s.path);
+    el.deleteBtn.disabled = false;
+    if (res && res.ok) {
+      closeDetail();
+      refreshList();
+    } else {
+      el.errorBanner.textContent = `⚠ ${(res && res.error) || tr('common.deleteFailed')}`;
+      el.errorBanner.style.display = 'block';
+    }
+  });
+
   el.saveLaunchConfigBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
     const config = collectLaunchConfig();
     await window.api.arkWriteLaunchConfig(state.currentServer.path, config);
     window.GameSounds?.confirm();
-    showStatus(el.launchSaveStatus, 'Enregistré ✓');
+    showStatus(el.launchSaveStatus, tr('common.saved'));
   });
 
   el.saveCommonSettingsBtn.addEventListener('click', async () => {
@@ -412,7 +458,7 @@
     renderCommonSettingsForm(settings.gameUserSettings.serverSettings);
     renderAdvancedForm(settings.gameUserSettings.serverSettings);
     window.GameSounds?.confirm();
-    showStatus(el.commonSaveStatus, 'Enregistré ✓');
+    showStatus(el.commonSaveStatus, tr('common.saved'));
   });
 
   el.saveAdvancedBtn.addEventListener('click', async () => {
@@ -422,7 +468,7 @@
     renderCommonSettingsForm(settings.gameUserSettings.serverSettings);
     renderAdvancedForm(settings.gameUserSettings.serverSettings);
     window.GameSounds?.confirm();
-    showStatus(el.advancedSaveStatus, 'Enregistré ✓');
+    showStatus(el.advancedSaveStatus, tr('common.saved'));
   });
 
   el.addEntryBtn.addEventListener('click', async () => {
@@ -445,7 +491,7 @@
     if (!state.currentServer) return;
     window.GameSounds?.confirm();
     resetConsole();
-    el.launchInfo.textContent = 'Application de la configuration…';
+    el.launchInfo.textContent = tr('ark.applyingConfig');
 
     // 1) Carte / session / ports
     const config = collectLaunchConfig();
@@ -460,9 +506,9 @@
     // 3) Lancement automatique
     const result = await window.api.arkLaunchServer(state.currentServer.path, config);
     if (!result.ok) {
-      el.launchInfo.textContent = `Configuration appliquée, mais échec au lancement : ${result.error}`;
+      el.launchInfo.textContent = tr('ark.setupLaunchFail', { error: result.error });
     } else {
-      el.launchInfo.textContent = `Configuration appliquée et serveur lancé — carte : ${config.map}`;
+      el.launchInfo.textContent = tr('ark.setupLaunchOk', { map: config.map });
     }
   });
 
@@ -476,9 +522,9 @@
 
     const result = await window.api.arkLaunchServer(state.currentServer.path, config);
     if (!result.ok) {
-      el.launchInfo.textContent = `Erreur au lancement : ${result.error}`;
+      el.launchInfo.textContent = `${tr('server.launchErrorLabel')} ${result.error}`;
     } else {
-      el.launchInfo.textContent = `Lancement en cours — carte : ${config.map}`;
+      el.launchInfo.textContent = tr('ark.launching', { map: config.map });
     }
     // Le statut définitif (running / error / crashed) arrive de façon asynchrone
     // via l'évènement onServerStatus, capté plus haut.
@@ -491,49 +537,165 @@
     await window.api.arkStopServer(state.currentServer.path);
 
     state.stopTimeoutId = setTimeout(() => {
-      el.stopWarningBanner.textContent =
-        "⏳ Le serveur ne s'est pas encore arrêté après 25 secondes. Tu peux utiliser « Forcer l'arrêt » ci-dessus si nécessaire — mais attention, les données non sauvegardées seront perdues.";
+      el.stopWarningBanner.textContent = tr('ark.stopWarning');
       el.stopWarningBanner.style.display = 'block';
     }, 25000);
   });
 
   el.forceStopBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
-    const confirmed = confirm(
-      "Forcer l'arrêt va tuer immédiatement le serveur, sans lui laisser le temps de sauvegarder. Continuer ?"
-    );
+    const confirmed = confirm(tr('ark.forceStopConfirm'));
     if (!confirmed) return;
 
     window.GameSounds?.back();
     await window.api.arkForceStopServer(state.currentServer.path);
   });
 
-  async function sendCommand() {
-    if (!state.currentServer) return;
-    const command = el.commandInput.value.trim();
-    if (!command) return;
-
+  // Écrit une ligne « commande envoyée » dans la console.
+  function echoCommand(command) {
     const line = document.createElement('div');
     line.className = 'console-line-command';
     line.textContent = `> ${command}`;
     el.consoleOutput.querySelector('.console-empty')?.remove();
     el.consoleOutput.appendChild(line);
     el.consoleOutput.scrollTop = el.consoleOutput.scrollHeight;
+  }
 
-    el.commandInput.value = '';
-    const result = await window.api.arkSendCommand(state.currentServer.path, command);
-    if (!result.ok) {
-      const errLine = document.createElement('div');
-      errLine.className = 'console-line-error';
-      errLine.textContent = `⚠ ${result.error}`;
-      el.consoleOutput.appendChild(errLine);
+  // Affiche la réponse (ou l'erreur) d'une commande RCON dans la console.
+  function appendRconResult(result) {
+    el.consoleOutput.querySelector('.console-empty')?.remove();
+    const div = document.createElement('div');
+    if (result && result.ok) {
+      div.textContent = result.response && result.response.length ? result.response : '✓';
+    } else {
+      div.className = 'console-line-error';
+      div.textContent = `⚠ ${(result && result.error) || ''}`;
     }
+    el.consoleOutput.appendChild(div);
+    el.consoleOutput.scrollTop = el.consoleOutput.scrollHeight;
+  }
+
+  // Envoie une commande RCON (retourne le résultat brut pour les usages internes).
+  async function runRcon(command) {
+    return window.api.arkRcon(state.currentServer.path, command);
+  }
+
+  async function sendCommand() {
+    if (!state.currentServer) return;
+    const command = el.commandInput.value.trim();
+    if (!command) return;
+    echoCommand(command);
+    el.commandInput.value = '';
+    appendRconResult(await runRcon(command));
   }
 
   el.sendCommandBtn.addEventListener('click', sendCommand);
   el.commandInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sendCommand();
   });
+
+  el.rconSaveBtn.addEventListener('click', async () => {
+    if (!state.currentServer) return;
+    window.GameSounds?.confirm();
+    echoCommand('SaveWorld');
+    appendRconResult(await runRcon('SaveWorld'));
+  });
+
+  // Pré-remplit le champ commande avec « Broadcast » (pas de fenêtre prompt, non
+  // fiable sous Electron) : l'utilisateur tape son message puis Envoyer.
+  el.rconBroadcastBtn.addEventListener('click', () => {
+    window.GameSounds?.toggle();
+    el.commandInput.value = 'Broadcast ';
+    el.commandInput.focus();
+  });
+
+  // ---------- Joueurs (via RCON) ----------
+
+  // Parse la sortie de « ListPlayers » : lignes du type « 0. Nom, <id> ».
+  function parsePlayers(text) {
+    if (!text || /No Players Connected/i.test(text)) return [];
+    const players = [];
+    for (const raw of text.split(/\r?\n/)) {
+      const m = raw.match(/^\s*(\d+)\.\s*(.+?),\s*(\S+)\s*$/);
+      if (m) players.push({ index: m[1], name: m[2], id: m[3] });
+    }
+    return players;
+  }
+
+  function buildPlayerRow(p) {
+    const row = document.createElement('div');
+    row.className = 'ark-player-row';
+
+    const info = document.createElement('div');
+    info.className = 'ark-player-info';
+    const name = document.createElement('span');
+    name.className = 'ark-player-name';
+    name.textContent = p.name;
+    const id = document.createElement('span');
+    id.className = 'ark-player-id';
+    id.textContent = p.id;
+    info.appendChild(name);
+    info.appendChild(id);
+
+    const actions = document.createElement('div');
+    actions.className = 'ark-player-actions';
+
+    const kick = document.createElement('button');
+    kick.className = 'secondary';
+    kick.textContent = tr('ark.kick');
+    kick.addEventListener('click', async () => {
+      window.GameSounds?.back();
+      kick.disabled = true;
+      echoCommand('KickPlayer ' + p.id);
+      appendRconResult(await runRcon('KickPlayer ' + p.id));
+      refreshPlayers();
+    });
+
+    const ban = document.createElement('button');
+    ban.className = 'danger';
+    ban.textContent = tr('ark.ban');
+    ban.addEventListener('click', async () => {
+      if (!confirm(tr('ark.banConfirm', { name: p.name }))) return;
+      window.GameSounds?.back();
+      ban.disabled = true;
+      echoCommand('BanPlayer ' + p.id);
+      appendRconResult(await runRcon('BanPlayer ' + p.id));
+      refreshPlayers();
+    });
+
+    actions.appendChild(kick);
+    actions.appendChild(ban);
+    row.appendChild(info);
+    row.appendChild(actions);
+    return row;
+  }
+
+  async function refreshPlayers() {
+    if (!state.currentServer) return;
+    window.GameSounds?.toggle();
+    el.playersList.innerHTML = '';
+    const res = await runRcon('ListPlayers');
+
+    if (!res || !res.ok) {
+      const err = document.createElement('p');
+      err.className = 'hint-text';
+      err.textContent = `⚠ ${(res && res.error) || ''}`;
+      el.playersList.appendChild(err);
+      return;
+    }
+
+    const players = parsePlayers(res.response);
+    if (players.length === 0) {
+      const none = document.createElement('p');
+      none.className = 'hint-text';
+      none.textContent = tr('ark.noPlayers');
+      el.playersList.appendChild(none);
+      return;
+    }
+    for (const p of players) el.playersList.appendChild(buildPlayerRow(p));
+  }
+
+  el.refreshPlayersBtn.addEventListener('click', refreshPlayers);
 
   el.generateScriptBtn.addEventListener('click', async () => {
     if (!state.currentServer) return;
@@ -544,8 +706,8 @@
 
     const result = await window.api.arkGenerateScript(state.currentServer.path, config);
     el.launchInfo.textContent = result.ok
-      ? `Script généré : ${result.scriptPath.split(/[\\/]/).pop()}`
-      : `Erreur : ${result.error}`;
+      ? tr('ark.scriptGenerated', { name: result.scriptPath.split(/[\\/]/).pop() })
+      : `${tr('common.errorLabel')} ${result.error}`;
   });
 
   // ---------- Assistant de création de serveur ----------
@@ -609,9 +771,9 @@
 
   function formatBytesShort(bytes) {
     const gb = bytes / (1024 * 1024 * 1024);
-    if (gb >= 0.1) return `${gb.toFixed(2)} Go`;
+    if (gb >= 0.1) return `${gb.toFixed(2)} ${tr('units.gb')}`;
     const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(0)} Mo`;
+    return `${mb.toFixed(0)} ${tr('units.mb')}`;
   }
 
   /**
@@ -631,9 +793,10 @@
         try {
           const { fileCount, totalBytes } = await window.api.arkGetInstallProgress(parentFolder, folderName, edition);
           if (!finished) {
+            const loc = window.AppSettings && window.AppSettings.getLang() === 'en' ? 'en-GB' : 'fr-FR';
             createEl.folderProgress.textContent = fileCount > 0
-              ? `📦 Progression détectée : ${fileCount.toLocaleString('fr-FR')} fichiers, ${formatBytesShort(totalBytes)} téléchargés jusqu'à présent.`
-              : "📦 En attente des premiers fichiers (le téléchargement démarre)…";
+              ? tr('ark.installProgress', { count: fileCount.toLocaleString(loc), size: formatBytesShort(totalBytes) })
+              : tr('ark.installWaiting');
           }
         } catch (e) {
           // best effort : une erreur ponctuelle de lecture ne doit pas interrompre le sondage
@@ -654,7 +817,7 @@
 
   async function openCreateModal() {
     if (!state.rootFolder) {
-      alert('Choisis d\'abord un dossier racine pour tes serveurs Ark (bouton "Choisir le dossier").');
+      alert(tr('ark.needRootFolder'));
       return;
     }
 
@@ -685,13 +848,13 @@
   createEl.confirmBtn.addEventListener('click', async () => {
     const folderName = createEl.folderName.value.trim();
     if (!folderName) {
-      alert('Indique un nom de dossier pour ce serveur.');
+      alert(tr('ark.needFolderName'));
       return;
     }
 
     const map = createEl.mapSelect.value === CUSTOM_MAP_VALUE ? createEl.customMapInput.value.trim() : createEl.mapSelect.value;
     if (!map) {
-      alert('Indique une carte.');
+      alert(tr('ark.needMap'));
       return;
     }
 
@@ -700,7 +863,7 @@
       folderName,
       edition: createEl.edition.value,
       map,
-      sessionName: createEl.sessionName.value.trim() || 'Mon Serveur Ark',
+      sessionName: createEl.sessionName.value.trim() || tr('ark.defaultSession'),
       serverPassword: createEl.serverPassword.value,
       adminPassword: createEl.adminPassword.value,
       maxPlayers: Number(createEl.maxPlayers.value) || 70,
@@ -719,7 +882,7 @@
     window.GameSounds?.confirm();
     createEl.form.style.display = 'none';
     createEl.progress.style.display = 'block';
-    createEl.progressLabel.textContent = "Installation via SteamCMD en cours… (peut prendre plusieurs minutes selon ta connexion, ne ferme pas l'appli)";
+    createEl.progressLabel.textContent = tr('ark.installing');
     createEl.consoleOutput.innerHTML = '';
     createEl.errorBanner.style.display = 'none';
 
@@ -731,20 +894,52 @@
     );
 
     if (result.ok) {
-      createEl.progressLabel.textContent = '✅ Serveur créé et lancé avec succès !';
+      createEl.progressLabel.textContent = tr('ark.createSuccess');
       window.GameSounds?.confirm();
     } else {
-      createEl.progressLabel.textContent = `❌ Échec à l'étape « ${result.step} »`;
+      createEl.progressLabel.textContent = tr('ark.createFailStep', { step: result.step });
       createEl.errorBanner.textContent = `⚠ ${result.error}`;
       createEl.errorBanner.style.display = 'block';
     }
     createEl.closeBtn.style.display = 'inline-block';
   });
 
+  // Retraduit les libellés construits en JS quand la langue change.
+  document.addEventListener('gg-langchange', () => {
+    if (state.rootFolder !== null || state.servers.length > 0) refreshList();
+
+    const emptyLine = el.consoleOutput.querySelector('.console-empty');
+    if (emptyLine) emptyLine.textContent = tr('server.consoleEmpty');
+
+    // Fiche détail ouverte : re-rendu des formulaires de paramètres traduits.
+    if (state.currentServer) {
+      renderCommonSettingsForm(state.lastServerSettingsEntries);
+      renderAdvancedForm(state.lastServerSettingsEntries);
+      const currentMap = el.mapSelect.value;
+      populateMapSelect(el.mapSelect, state.currentServer.edition);
+      el.mapSelect.value = currentMap;
+      el.customMapWrap.style.display = el.mapSelect.value === CUSTOM_MAP_VALUE ? 'flex' : 'none';
+    }
+
+    // Assistant de création ouvert : re-traduit l'option « carte personnalisée ».
+    if (createEl.modal.style.display !== 'none') {
+      const cur = createEl.mapSelect.value;
+      populateMapSelect(createEl.mapSelect, createEl.edition.value);
+      createEl.mapSelect.value = cur;
+      createEl.customMapWrap.style.display = createEl.mapSelect.value === CUSTOM_MAP_VALUE ? 'flex' : 'none';
+    }
+  });
+
   window.ArkPanel = {
     onShow() {
       if (state.rootFolder !== null || state.servers.length > 0) return;
       refreshList();
+    },
+    // Ouvre directement la fiche détail d'un serveur par son chemin (depuis le dashboard).
+    async openByPath(path) {
+      await refreshList();
+      const server = state.servers.find((s) => s.path === path);
+      if (server) openDetail(server);
     },
   };
 })();

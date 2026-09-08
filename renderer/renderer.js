@@ -13,6 +13,20 @@ const PLATFORM_LABELS = {
   manual: 'Ajouté manuellement',
 };
 
+// Traduction (repli sur le texte français / la clé si absente).
+function tr(key, params) {
+  const v = window.AppSettings ? window.AppSettings.t(key, params) : null;
+  return v != null ? v : key;
+}
+
+// Libellé de plateforme : les noms de launchers restent tels quels ; seuls
+// « Sans launcher » et « Ajouté manuellement » sont traduits.
+function platformLabel(platform) {
+  if (platform === 'standalone') return tr('platform.standalone');
+  if (platform === 'manual') return tr('platform.manual');
+  return PLATFORM_LABELS[platform] || platform;
+}
+
 const state = {
   allGames: [],
   displayedGames: [],
@@ -28,9 +42,6 @@ const el = {
   emptyState: document.getElementById('emptyState'),
   searchBox: document.getElementById('searchBox'),
   platformFilter: document.getElementById('platformFilter'),
-  settingsPanel: document.getElementById('settingsPanel'),
-  settingsBtn: document.getElementById('settingsBtn'),
-  closeSettingsBtn: document.getElementById('closeSettingsBtn'),
   refreshBtn: document.getElementById('refreshBtn'),
   addGameBtn: document.getElementById('addGameBtn'),
   minimizeBtn: document.getElementById('minimizeBtn'),
@@ -43,7 +54,27 @@ const el = {
   addGameConfirmBtn: document.getElementById('addGameConfirmBtn'),
   addGameCancelBtn: document.getElementById('addGameCancelBtn'),
   lastSyncInfo: document.getElementById('lastSyncInfo'),
+  detailPanel: document.getElementById('gameDetailPanel'),
+  detailArt: document.getElementById('gameDetailArt'),
+  detailName: document.getElementById('gameDetailName'),
+  detailPlatform: document.getElementById('gameDetailPlatform'),
+  detailPlayBtn: document.getElementById('gameDetailPlayBtn'),
+  detailArtworkBtn: document.getElementById('gameDetailArtworkBtn'),
+  detailArtworkResetBtn: document.getElementById('gameDetailArtworkResetBtn'),
+  detailArtworkStatus: document.getElementById('gameDetailArtworkStatus'),
+  sgdbKeyInput: document.getElementById('sgdbKeyInput'),
+  autoUpdateToggle: document.getElementById('autoUpdateToggle'),
+  updateCurrentVersion: document.getElementById('updateCurrentVersion'),
+  updateCheckBtn: document.getElementById('updateCheckBtn'),
+  updateDownloadBtn: document.getElementById('updateDownloadBtn'),
+  updateInstallBtn: document.getElementById('updateInstallBtn'),
+  updateStatus: document.getElementById('updateStatus'),
 };
+
+// Clé stable d'un jeu pour les jaquettes personnalisées (doit correspondre à main.js).
+function gameKey(game) {
+  return `${game.platform}:${game.name}`;
+}
 
 // ---------- Rendu de la grille ----------
 
@@ -64,7 +95,7 @@ function renderGrid() {
     if (showHeaders && game.platform !== lastPlatform) {
       const header = document.createElement('div');
       header.className = 'platform-section-header';
-      header.textContent = PLATFORM_LABELS[game.platform] || game.platform;
+      header.textContent = platformLabel(game.platform);
       el.grid.appendChild(header);
       lastPlatform = game.platform;
     }
@@ -131,31 +162,32 @@ function renderGrid() {
 
     const platformEl = document.createElement('div');
     platformEl.className = 'game-tile-platform';
-    platformEl.textContent = PLATFORM_LABELS[game.platform] || game.platform;
+    platformEl.textContent = platformLabel(game.platform);
 
     tile.appendChild(iconWrap);
     tile.appendChild(nameEl);
     tile.appendChild(platformEl);
 
+    // Un simple clic sélectionne le jeu (et fait apparaître le panneau de
+    // détails à droite). Le lancement se fait via le bouton « Jouer » de ce
+    // panneau — plus de double-clic.
     tile.addEventListener('click', () => {
       if (state.isLoading) return;
       if (state.selectedIndex !== i) {
         state.selectedIndex = i;
         updateSelectionClasses();
-        window.GameSounds?.navigate();
       }
+      window.GameSounds?.select();
     });
-    tile.addEventListener('dblclick', () => { if (!state.isLoading) launchGame(state.displayedGames[i]); });
 
     el.grid.appendChild(tile);
   }
 
   el.emptyState.style.display = state.displayedGames.length === 0 ? 'flex' : 'none';
 
-  if (state.displayedGames.length > 0 && state.selectedIndex < 0) {
-    state.selectedIndex = 0;
-    updateSelectionClasses();
-  }
+  // Plus de sélection par défaut : le panneau de détails n'apparaît qu'après
+  // un clic (ou une navigation clavier/manette) de l'utilisateur.
+  renderDetailPanel();
 }
 
 function updateSelectionClasses() {
@@ -166,6 +198,55 @@ function updateSelectionClasses() {
 
   const selectedTile = el.grid.querySelector('.game-tile.selected');
   if (selectedTile) selectedTile.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+
+  renderDetailPanel();
+}
+
+// Panneau de détails du jeu sélectionné (à droite). Masqué si aucun jeu
+// n'est sélectionné.
+function renderDetailPanel() {
+  const game = state.displayedGames[state.selectedIndex];
+  if (!game || state.selectedIndex < 0) {
+    el.detailPanel.hidden = true;
+    return;
+  }
+
+  el.detailArt.innerHTML = '';
+  const letter = () => {
+    const fb = document.createElement('div');
+    fb.className = 'fallback-letter';
+    fb.textContent = (game.name[0] || '?').toUpperCase();
+    el.detailArt.appendChild(fb);
+  };
+
+  if (game.boxArtUrl || game.iconUrl) {
+    const img = document.createElement('img');
+    img.alt = '';
+    if (game.boxArtUrl) {
+      img.src = game.boxArtUrl;
+      img.addEventListener('error', () => {
+        if (game.iconUrl) {
+          img.classList.add('contain');
+          img.addEventListener('error', () => { img.remove(); letter(); }, { once: true });
+          img.src = game.iconUrl;
+        } else {
+          img.remove();
+          letter();
+        }
+      }, { once: true });
+    } else {
+      img.classList.add('contain');
+      img.addEventListener('error', () => { img.remove(); letter(); }, { once: true });
+      img.src = game.iconUrl;
+    }
+    el.detailArt.appendChild(img);
+  } else {
+    letter();
+  }
+
+  el.detailName.textContent = game.name;
+  el.detailPlatform.textContent = platformLabel(game.platform);
+  el.detailPanel.hidden = false;
 }
 
 // ---------- Filtrage ----------
@@ -196,7 +277,9 @@ function applyFilters() {
     })
     .sort((a, b) => platformRank(a.platform) - platformRank(b.platform)); // tri stable : conserve l'ordre alphabétique au sein de chaque groupe
 
-  state.selectedIndex = state.displayedGames.length > 0 ? 0 : -1;
+  // Pas de sélection par défaut : on repart sans jeu sélectionné à chaque
+  // (re)filtrage. L'utilisateur choisit lui-même.
+  state.selectedIndex = -1;
   renderGrid();
 }
 
@@ -213,7 +296,6 @@ function setLoadingUiState(isLoading) {
   // qu'une synchronisation est déjà en cours.
   el.addGameBtn.disabled = isLoading;
   el.refreshBtn.disabled = isLoading;
-  el.settingsBtn.disabled = isLoading;
   el.searchBox.disabled = isLoading;
   el.platformFilter.disabled = isLoading;
 
@@ -223,10 +305,17 @@ function setLoadingUiState(isLoading) {
 }
 
 function formatSyncDate(timestamp) {
-  if (!timestamp) return 'jamais';
-  return new Date(timestamp).toLocaleString('fr-FR', {
+  if (!timestamp) return tr('games.never');
+  const loc = window.AppSettings && window.AppSettings.getLang() === 'en' ? 'en-GB' : 'fr-FR';
+  return new Date(timestamp).toLocaleString(loc, {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
+}
+
+function updateLastSyncLabel() {
+  if (el.lastSyncInfo) {
+    el.lastSyncInfo.textContent = `${tr('games.lastSyncLabel')} ${formatSyncDate(state.lastSync)}`;
+  }
 }
 
 async function refreshGames(forceRescan = false) {
@@ -237,9 +326,7 @@ async function refreshGames(forceRescan = false) {
     const result = await window.api.scanGames(forceRescan);
     state.allGames = result.games;
     state.lastSync = result.lastSync;
-    if (el.lastSyncInfo) {
-      el.lastSyncInfo.textContent = `Dernière synchronisation : ${formatSyncDate(state.lastSync)}`;
-    }
+    updateLastSyncLabel();
     applyFilters();
   } finally {
     setLoadingUiState(false);
@@ -250,7 +337,7 @@ async function refreshGames(forceRescan = false) {
 
 function launchGame(game) {
   if (!game || state.isLoading) return;
-  window.GameSounds?.confirm();
+  window.GameSounds?.playGame();
   window.api.launchGame(game);
 }
 
@@ -365,16 +452,18 @@ document.addEventListener('keydown', (e) => {
     case 'Enter':
       if (gamesViewActive) { launchGame(state.displayedGames[state.selectedIndex]); e.preventDefault(); }
       break;
-    case 'Escape':
-      if (el.settingsPanel.style.display !== 'none') {
+    case 'Escape': {
+      const settingsModal = document.getElementById('appSettingsModal');
+      if (settingsModal && settingsModal.style.display !== 'none') {
         window.GameSounds?.toggle();
-        closeSettings();
+        settingsModal.style.display = 'none';
       } else {
         window.GameSounds?.back();
         window.api.minimizeToTray();
       }
       e.preventDefault();
       break;
+    }
     case 'f':
     case 'F':
       if (gamesViewActive && e.ctrlKey) { el.searchBox.focus(); el.searchBox.select(); e.preventDefault(); }
@@ -451,15 +540,6 @@ setInterval(pollGamepad, 100);
 
 // ---------- Paramètres ----------
 
-function openSettings() {
-  refreshManualGamesList();
-  el.settingsPanel.style.display = 'block';
-}
-
-function closeSettings() {
-  el.settingsPanel.style.display = 'none';
-}
-
 async function refreshManualGamesList() {
   const entries = await window.api.getManualGames();
   el.manualGamesList.innerHTML = '';
@@ -472,7 +552,7 @@ async function refreshManualGamesList() {
     name.textContent = entry.name;
 
     const removeBtn = document.createElement('button');
-    removeBtn.textContent = 'Retirer';
+    removeBtn.textContent = tr('common.remove');
     removeBtn.addEventListener('click', async () => {
       await window.api.removeManualGame(entry.exePath);
       await refreshManualGamesList();
@@ -485,8 +565,10 @@ async function refreshManualGamesList() {
   }
 }
 
-el.settingsBtn.addEventListener('click', () => { window.GameSounds?.toggle(); openSettings(); });
-el.closeSettingsBtn.addEventListener('click', () => { window.GameSounds?.toggle(); closeSettings(); });
+// Les réglages « Jeux » vivent maintenant dans la fenêtre Paramètres globale
+// (bouton ⚙ en haut à droite, géré par appsettings.js). On expose un hook pour
+// rafraîchir la liste des jeux manuels à l'ouverture de cette fenêtre.
+window.GamesSettings = { refresh: refreshManualGamesList };
 
 el.startupCheckbox.addEventListener('change', () => {
   window.api.setStartupEnabled(el.startupCheckbox.checked);
@@ -496,6 +578,69 @@ el.standaloneScanCheckbox.addEventListener('change', () => {
   window.api.settingsSet('standaloneGameScanEnabled', el.standaloneScanCheckbox.checked);
 });
 
+// Clé API SteamGridDB : enregistrée à la perte de focus / validation.
+if (el.sgdbKeyInput) {
+  const saveKey = () => window.api.settingsSet('steamGridDbKey', el.sgdbKeyInput.value.trim());
+  el.sgdbKeyInput.addEventListener('change', saveKey);
+  el.sgdbKeyInput.addEventListener('blur', saveKey);
+}
+
+// ---------- Mise à jour automatique ----------
+
+const t = (key, params) => (window.AppSettings ? window.AppSettings.t(key, params) : key);
+
+function renderUpdateStatus(s) {
+  if (!el.updateStatus) return;
+  const state = s && s.state;
+  let msg = '';
+  let showDownload = false;
+  let showInstall = false;
+  switch (state) {
+    case 'checking': msg = t('update.checking'); break;
+    case 'available':
+      msg = t('update.available', { version: s.version || '' });
+      showDownload = true;
+      break;
+    case 'not-available': msg = t('update.upToDate'); break;
+    case 'downloading':
+      msg = t('update.downloading', { percent: (s.percent != null ? s.percent : 0) });
+      break;
+    case 'downloaded':
+      msg = t('update.downloaded', { version: s.version || '' });
+      showInstall = true;
+      break;
+    case 'error': msg = t('update.error', { detail: s.detail || '' }); break;
+    case 'disabled':
+      msg = s.reason === 'dev' ? t('update.disabledDev') : t('update.disabled');
+      break;
+    default: msg = '';
+  }
+  el.updateStatus.textContent = msg;
+  if (el.updateDownloadBtn) el.updateDownloadBtn.hidden = !showDownload;
+  if (el.updateInstallBtn) el.updateInstallBtn.hidden = !showInstall;
+}
+
+if (el.autoUpdateToggle) {
+  el.autoUpdateToggle.addEventListener('change', () => {
+    window.api.settingsSet('autoUpdateCheck', el.autoUpdateToggle.checked);
+  });
+}
+if (el.updateCheckBtn) {
+  el.updateCheckBtn.addEventListener('click', async () => {
+    renderUpdateStatus({ state: 'checking' });
+    const res = await window.api.updateCheck();
+    renderUpdateStatus(res);
+  });
+}
+if (el.updateDownloadBtn) {
+  el.updateDownloadBtn.addEventListener('click', () => window.api.updateDownload());
+}
+if (el.updateInstallBtn) {
+  el.updateInstallBtn.addEventListener('click', () => window.api.updateInstall());
+}
+// Événements poussés par le processus principal (progression, disponibilité...).
+if (window.api.onUpdateStatus) window.api.onUpdateStatus(renderUpdateStatus);
+
 // ---------- Ajout manuel de jeu ----------
 
 el.addGameBtn.addEventListener('click', async () => {
@@ -504,7 +649,7 @@ el.addGameBtn.addEventListener('click', async () => {
   if (!result) return;
 
   if (result.error === 'shortcut') {
-    alert("Impossible de résoudre ce raccourci vers un exécutable valide.");
+    alert(tr('games.shortcutError'));
     return;
   }
 
@@ -538,6 +683,53 @@ el.addGameConfirmBtn.addEventListener('click', async () => {
 
 el.refreshBtn.addEventListener('click', () => { window.GameSounds?.toggle(); refreshGames(true); });
 el.minimizeBtn.addEventListener('click', () => { window.GameSounds?.back(); window.api.minimizeToTray(); });
+
+// Bouton « Jouer » du panneau de détails : joue le son (playGame, celui qui
+// était prévu au double-clic) puis lance le jeu sélectionné.
+el.detailPlayBtn.addEventListener('click', () => {
+  if (state.isLoading) return;
+  const game = state.displayedGames[state.selectedIndex];
+  if (game) launchGame(game);
+});
+
+// Jaquette SteamGridDB pour le jeu sélectionné.
+el.detailArtworkBtn.addEventListener('click', async () => {
+  const game = state.displayedGames[state.selectedIndex];
+  if (!game) return;
+  el.detailArtworkBtn.disabled = true;
+  el.detailArtworkStatus.textContent = tr('games.artworkSearching');
+  try {
+    const res = await window.api.sgdbFetch(gameKey(game), game.name);
+    if (res && res.ok) {
+      game.boxArtUrl = res.cover;
+      renderGrid();
+      renderDetailPanel();
+      el.detailArtworkStatus.textContent = tr('games.artworkDone');
+    } else {
+      const map = {
+        noKey: tr('games.artworkNoKey'),
+        notFound: tr('games.artworkNotFound'),
+        noArtwork: tr('games.artworkNotFound'),
+      };
+      el.detailArtworkStatus.textContent = (res && map[res.error]) || tr('games.artworkError');
+    }
+  } catch (e) {
+    el.detailArtworkStatus.textContent = tr('games.artworkError');
+  } finally {
+    el.detailArtworkBtn.disabled = false;
+  }
+});
+
+el.detailArtworkResetBtn.addEventListener('click', async () => {
+  const game = state.displayedGames[state.selectedIndex];
+  if (!game) return;
+  await window.api.sgdbClear(gameKey(game));
+  game.boxArtUrl = null; // revient à l'icône d'origine
+  renderGrid();
+  renderDetailPanel();
+  el.detailArtworkStatus.textContent = '';
+});
+
 el.searchBox.addEventListener('input', applyFilters);
 el.platformFilter.addEventListener('change', applyFilters);
 
@@ -561,19 +753,54 @@ document.querySelectorAll('.app-tab').forEach((tab) => {
 
     // On informe le panneau qu'on vient de quitter qu'il devient invisible
     // (arrête par exemple le polling périodique de l'onglet Performance).
-    if (previousView === 'performance') window.PerformancePanel?.onHide();
+    if (previousView === 'dashboard') { window.DashboardPanel?.onHide(); window.PerformancePanel?.onHide(); }
 
     // On informe les modules qu'ils deviennent visibles, pour qu'ils chargent
     // leurs données (ou démarrent leur polling) au moment de l'affichage
     // plutôt qu'au démarrage de l'appli.
-    if (tab.dataset.view === 'minecraft') window.MinecraftPanel?.onShow();
-    if (tab.dataset.view === 'mcprofiles') window.McProfilesPanel?.onShow();
-    if (tab.dataset.view === 'ark') {
-      window.ArkPanel?.onShow();
-      window.SteamCmdPanel?.onShow();
-    }
-    if (tab.dataset.view === 'performance') window.PerformancePanel?.onShow();
+    if (tab.dataset.view === 'minecraft') activateMinecraftSub(currentMinecraftSub);
+    if (tab.dataset.view === 'ark') window.ArkPanel?.onShow();
+    if (tab.dataset.view === 'steamcmd') window.SteamCmdPanel?.onShow();
+    if (tab.dataset.view === 'dashboard') { window.DashboardPanel?.onShow(); window.PerformancePanel?.onShow(); }
   });
+});
+
+// ---------- Sous-onglets Minecraft (Profils / Serveurs) ----------
+
+let currentMinecraftSub = 'mcprofiles';
+
+function activateMinecraftSub(sub) {
+  currentMinecraftSub = sub === 'mcservers' ? 'mcservers' : 'mcprofiles';
+  document.querySelectorAll('#view-minecraft .subtab').forEach((b) => {
+    b.classList.toggle('active', b.dataset.subtab === currentMinecraftSub);
+  });
+  const profiles = document.getElementById('subview-mcprofiles');
+  const servers = document.getElementById('subview-mcservers');
+  if (profiles) profiles.classList.toggle('active', currentMinecraftSub === 'mcprofiles');
+  if (servers) servers.classList.toggle('active', currentMinecraftSub === 'mcservers');
+
+  if (currentMinecraftSub === 'mcprofiles') window.McProfilesPanel?.onShow();
+  else window.MinecraftPanel?.onShow();
+}
+
+document.querySelectorAll('#view-minecraft .subtab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('active')) return;
+    window.GameSounds?.toggle();
+    activateMinecraftSub(btn.dataset.subtab);
+  });
+});
+
+// ---------- Changement de langue ----------
+
+// Retraduit les libellés construits en JS (en-têtes/plateformes des tuiles,
+// date de dernière synchronisation, liste des jeux manuels).
+document.addEventListener('gg-langchange', () => {
+  renderGrid();
+  updateLastSyncLabel();
+  if (document.getElementById('appSettingsModal')?.style.display !== 'none') {
+    refreshManualGamesList();
+  }
 });
 
 // ---------- Démarrage ----------
@@ -582,5 +809,12 @@ document.querySelectorAll('.app-tab').forEach((tab) => {
   el.startupCheckbox.checked = await window.api.getStartupEnabled();
   const settings = await window.api.settingsGet();
   el.standaloneScanCheckbox.checked = settings.standaloneGameScanEnabled;
+  if (el.sgdbKeyInput) el.sgdbKeyInput.value = settings.steamGridDbKey || '';
+  if (el.autoUpdateToggle) el.autoUpdateToggle.checked = settings.autoUpdateCheck !== false;
+  try {
+    const upd = await window.api.updateGetStatus();
+    if (el.updateCurrentVersion) el.updateCurrentVersion.textContent = upd.currentVersion || '—';
+    if (!upd.operational) renderUpdateStatus({ state: 'disabled', reason: upd.packaged ? 'module' : 'dev' });
+  } catch (_) { /* backend indisponible */ }
   await refreshGames();
 })();

@@ -331,6 +331,8 @@ const DEFAULT_LAUNCH_CONFIG = {
   maxPlayers: 70,
   port: 7777,
   queryPort: 27015,
+  rconEnabled: true, // RCON activé par défaut (nécessaire pour la console/joueurs)
+  rconPort: 27020,
   extraSessionParams: '', // ex: "RCONEnabled=True?RCONPort=27020"
   extraFlags: '-server -log', // ex: "-server -log -NoBattlEye"
 };
@@ -356,6 +358,14 @@ function writeLaunchConfig(serverPath, config) {
 
 /** Construit la chaîne d'arguments de lancement Ark (un seul argument "Carte?param=val?param=val"). */
 function buildMapArgument(config) {
+  // RCON : ajouté automatiquement si activé, sauf si l'utilisateur l'a déjà
+  // mis à la main dans extraSessionParams (on évite les doublons).
+  const extra = config.extraSessionParams || '';
+  const rconAlreadySet = /RCONEnabled/i.test(extra);
+  const rconParams = config.rconEnabled && !rconAlreadySet
+    ? [`RCONEnabled=True`, `RCONPort=${config.rconPort || 27020}`]
+    : [];
+
   const params = [
     'listen',
     `SessionName=${config.sessionName}`,
@@ -364,10 +374,25 @@ function buildMapArgument(config) {
     `MaxPlayers=${config.maxPlayers}`,
     `Port=${config.port}`,
     `QueryPort=${config.queryPort}`,
-    config.extraSessionParams ? config.extraSessionParams.replace(/^\?/, '') : null,
+    ...rconParams,
+    extra ? extra.replace(/^\?/, '') : null,
   ].filter(Boolean);
 
   return `${config.map}?${params.join('?')}`;
+}
+
+/**
+ * Infos de connexion RCON d'un serveur, déduites de sa config de lancement.
+ * Le mot de passe RCON est le mot de passe admin du serveur.
+ */
+function getRconInfo(serverPath) {
+  const config = readLaunchConfig(serverPath);
+  return {
+    enabled: config.rconEnabled !== false,
+    host: '127.0.0.1',
+    port: Number(config.rconPort) || 27020,
+    password: config.adminPassword || '',
+  };
 }
 
 function buildLaunchArgs(config) {
@@ -425,6 +450,7 @@ module.exports = {
   writeLaunchConfig,
   buildMapArgument,
   buildLaunchArgs,
+  getRconInfo,
   generateLaunchScript,
   findServerExecutable,
   KNOWN_MAPS,

@@ -3,6 +3,11 @@
 (function () {
   const POLL_INTERVAL_MS = 2000;
 
+  function T(key, fb) {
+    const v = window.AppSettings ? window.AppSettings.t(key) : null;
+    return v != null ? v : fb;
+  }
+
   const state = {
     pollTimer: null,
   };
@@ -22,13 +27,15 @@
     gpuEmpty: document.getElementById('perfGpuEmpty'),
     disksList: document.getElementById('perfDisksList'),
     disksEmpty: document.getElementById('perfDisksEmpty'),
+    procList: document.getElementById('perfProcList'),
+    procEmpty: document.getElementById('perfProcEmpty'),
   };
 
   function formatBytes(bytes) {
     const gb = bytes / (1024 * 1024 * 1024);
-    if (gb >= 1) return `${gb.toFixed(1)} Go`;
+    if (gb >= 1) return `${gb.toFixed(1)} ${T('units.gb', 'Go')}`;
     const mb = bytes / (1024 * 1024);
-    return `${mb.toFixed(0)} Mo`;
+    return `${mb.toFixed(0)} ${T('units.mb', 'Mo')}`;
   }
 
   function severityClass(percent) {
@@ -45,7 +52,7 @@
   function renderCpu(cpu) {
     el.cpuPercent.textContent = `${cpu.overallPercent}%`;
     applyBar(el.cpuBar, cpu.overallPercent);
-    el.cpuModel.textContent = `${cpu.model} — ${cpu.perCorePercent.length} cœurs (logiques)`;
+    el.cpuModel.textContent = `${cpu.model} — ${cpu.perCorePercent.length} ${T('perf.cores', 'cœurs (logiques)')}`;
 
     el.cpuCores.innerHTML = '';
     for (const corePercent of cpu.perCorePercent) {
@@ -66,7 +73,7 @@
   function renderMemory(memory) {
     el.ramPercent.textContent = `${memory.usedPercent}%`;
     applyBar(el.ramBar, memory.usedPercent);
-    el.ramDetail.textContent = `${formatBytes(memory.usedBytes)} utilisés sur ${formatBytes(memory.totalBytes)}`;
+    el.ramDetail.textContent = `${formatBytes(memory.usedBytes)} ${T('perf.ramUsed', 'utilisés sur')} ${formatBytes(memory.totalBytes)}`;
   }
 
   function renderGpu(gpu) {
@@ -88,7 +95,7 @@
       // Le compteur d'utilisation 3D n'est pas disponible sur toutes les
       // configurations (pilote, permissions...) : on affiche quand même le
       // matériel détecté plutôt que de tout masquer.
-      el.gpuPercent.textContent = 'N/D';
+      el.gpuPercent.textContent = T('common.na', 'N/D');
       applyBar(el.gpuBar, 0);
     }
 
@@ -112,7 +119,13 @@
 
       const label = document.createElement('div');
       label.className = 'perf-disk-label';
-      label.innerHTML = `<span>${disk.drive}</span><span>${formatBytes(disk.usedBytes)} / ${formatBytes(disk.totalBytes)} (${disk.usedPercent}%)</span>`;
+      const driveLabel = disk.name ? `${disk.drive} ${disk.name}` : disk.drive;
+      const left = document.createElement('span');
+      left.textContent = driveLabel;
+      const right = document.createElement('span');
+      right.textContent = `${formatBytes(disk.usedBytes)} / ${formatBytes(disk.totalBytes)} (${disk.usedPercent}%)`;
+      label.appendChild(left);
+      label.appendChild(right);
 
       const track = document.createElement('div');
       track.className = 'perf-bar-track';
@@ -126,15 +139,47 @@
     }
   }
 
+  function renderProcesses(processes) {
+    if (!el.procList) return;
+    el.procList.innerHTML = '';
+
+    const list = processes || [];
+    if (list.length === 0) {
+      if (el.procEmpty) el.procEmpty.style.display = 'block';
+      return;
+    }
+    if (el.procEmpty) el.procEmpty.style.display = 'none';
+
+    for (const proc of list) {
+      const row = document.createElement('div');
+      row.className = 'perf-proc-row';
+
+      const name = document.createElement('span');
+      name.className = 'perf-proc-name';
+      name.textContent = proc.name;
+      name.title = proc.name;
+
+      const stats = document.createElement('span');
+      stats.className = 'perf-proc-stats';
+      stats.textContent = `${proc.cpuPercent}% CPU · ${formatBytes(proc.memBytes)}`;
+
+      row.appendChild(name);
+      row.appendChild(stats);
+      el.procList.appendChild(row);
+    }
+  }
+
   async function refreshSnapshot() {
     const snapshot = await window.api.perfGetSnapshot();
     renderCpu(snapshot.cpu);
     renderMemory(snapshot.memory);
     renderGpu(snapshot.gpu);
+    renderProcesses(snapshot.processes);
     renderDisks(snapshot.disks);
 
     const now = new Date(snapshot.timestamp);
-    el.updatedLabel.textContent = `Mis à jour à ${now.toLocaleTimeString('fr-FR')}`;
+    const loc = window.AppSettings && window.AppSettings.getLang() === 'en' ? 'en-GB' : 'fr-FR';
+    el.updatedLabel.textContent = `${T('perf.updated', 'Mis à jour à')} ${now.toLocaleTimeString(loc)}`;
   }
 
   function startPolling() {
@@ -149,6 +194,9 @@
       state.pollTimer = null;
     }
   }
+
+  // Rafraîchit immédiatement (libellés + unités traduits) si l'onglet est visible.
+  document.addEventListener('gg-langchange', () => { if (state.pollTimer) refreshSnapshot(); });
 
   window.PerformancePanel = {
     onShow() { startPolling(); },

@@ -10,12 +10,14 @@
 // PowerShell et java en ligne de commande (Windows).
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const https = require('https');
 const crypto = require('crypto');
 const { execFile, spawn } = require('child_process');
 const { app } = require('electron');
 const appSettings = require('./appSettings');
+const i18n = require('./i18n');
 
 // ---- Emplacements ----
 
@@ -172,7 +174,7 @@ async function installFabric(mcVersion, loaderVersion) {
 
   const res = await httpsGetJson(url);
   if (!res.ok || !res.data || !res.data.id) {
-    return { ok: false, error: 'Impossible de récupérer le profil Fabric (' + (res.error || 'réponse invalide') + ').' };
+    return { ok: false, error: i18n.t('mcl.fabricProfileFail', { error: res.error || i18n.t('mcl.invalidResponse') }) };
   }
 
   const versionId = res.data.id; // ex: "fabric-loader-0.15.7-1.20.1"
@@ -181,7 +183,7 @@ async function installFabric(mcVersion, loaderVersion) {
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, versionId + '.json'), JSON.stringify(res.data, null, 2), 'utf8');
   } catch (e) {
-    return { ok: false, error: 'Écriture du profil Fabric échouée : ' + e.message };
+    return { ok: false, error: i18n.t('mcl.fabricWriteFail', { error: e.message }) };
   }
   return { ok: true, versionId };
 }
@@ -256,13 +258,13 @@ async function installFromJar(jarUrl, tmpDir, kind, matchPredicate) {
   try {
     await downloadToFile(jarUrl, jarPath);
   } catch (e) {
-    return { ok: false, error: "Téléchargement de l'installeur " + kind + ' échoué : ' + e.message };
+    return { ok: false, error: i18n.t('mcl.installerDownloadFail', { kind, error: e.message }) };
   }
 
   const before = new Set(safeReaddir(getVersionsDir()));
   const run = await runInstaller(jarPath, getMinecraftDir());
   if (!run.ok) {
-    return { ok: false, error: "L'installeur " + kind + ' a échoué : ' + run.error };
+    return { ok: false, error: i18n.t('mcl.installerFail', { kind, error: run.error }) };
   }
 
   // Détermine l'id de version nouvellement créé (diff avant/après, sinon match).
@@ -270,7 +272,7 @@ async function installFromJar(jarUrl, tmpDir, kind, matchPredicate) {
   const created = after.find((n) => !before.has(n) && matchPredicate(n));
   const versionId = created || findNewestVersionIdMatching(matchPredicate);
   if (!versionId) {
-    return { ok: false, error: "Installeur " + kind + ' terminé mais aucune version détectée dans versions/.' };
+    return { ok: false, error: i18n.t('mcl.installerNoVersion', { kind }) };
   }
   return { ok: true, versionId };
 }
@@ -299,14 +301,14 @@ async function installLoader(loaderId, mcVersion, tmpDir) {
       'https://meta.quiltmc.org/v3/versions/loader/' +
       encodeURIComponent(mcVersion) + '/' + encodeURIComponent(version) + '/profile/json';
     const res = await httpsGetJson(url);
-    if (!res.ok || !res.data || !res.data.id) return { ok: false, error: 'Profil Quilt indisponible.' };
+    if (!res.ok || !res.data || !res.data.id) return { ok: false, error: i18n.t('mcl.quiltUnavailable') };
     const versionId = res.data.id;
     const dir = path.join(getVersionsDir(), versionId);
     try {
       fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(path.join(dir, versionId + '.json'), JSON.stringify(res.data, null, 2), 'utf8');
     } catch (e) {
-      return { ok: false, error: 'Écriture du profil Quilt échouée : ' + e.message };
+      return { ok: false, error: i18n.t('mcl.quiltWriteFail', { error: e.message }) };
     }
     return { ok: true, versionId };
   }
@@ -317,16 +319,14 @@ async function installLoader(loaderId, mcVersion, tmpDir) {
     return {
       ok: false,
       needsJava: true,
-      error:
-        "Java est introuvable sur le PATH. L'installation de " + name +
-        ' nécessite Java (le même que celui utilisé pour jouer). Installe Java puis réessaie.',
+      error: i18n.t('mcl.needJava', { name }),
     };
   }
 
   if (name === 'forge') return installForge(mcVersion, version, tmpDir);
   if (name === 'neoforge') return installNeoForge(version, tmpDir);
 
-  return { ok: false, error: 'Loader non pris en charge : ' + name };
+  return { ok: false, error: i18n.t('mcl.loaderUnsupported', { name }) };
 }
 
 // ---- launcher_profiles.json ----
@@ -361,7 +361,7 @@ function upsertProfile(opts) {
   const p = getProfilesPath();
 
   if (!fs.existsSync(getMinecraftDir())) {
-    return { ok: false, error: "Dossier .minecraft introuvable (" + getMinecraftDir() + "). Le launcher Minecraft officiel est-il installé ?" };
+    return { ok: false, error: i18n.t('mcl.mcDirNotFound', { dir: getMinecraftDir() }) };
   }
 
   const data = readLauncherProfiles();
@@ -395,7 +395,7 @@ function upsertProfile(opts) {
     fs.mkdirSync(path.dirname(p), { recursive: true });
     fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {
-    return { ok: false, error: "Écriture de launcher_profiles.json échouée : " + e.message };
+    return { ok: false, error: i18n.t('mcl.profilesWriteFail', { error: e.message }) };
   }
   return { ok: true, key };
 }
@@ -580,7 +580,7 @@ function listProfiles() {
     const kind = info ? 'modpack' : classifyNonModpackKind(pr);
     profiles.push({
       key,
-      name: pr.name || '(sans nom)',
+      name: pr.name || null, // le renderer affichera « Profil par défaut » si null
       icon: pr.icon || null,
       lastVersionId: pr.lastVersionId || null,
       gameDir: pr.gameDir || null,
@@ -597,7 +597,7 @@ function listProfiles() {
   // Tri : modpacks d'abord, puis alphabétique.
   profiles.sort((a, b) => {
     if (a.isModpack !== b.isModpack) return a.isModpack ? -1 : 1;
-    return a.name.localeCompare(b.name);
+    return String(a.name || '').localeCompare(String(b.name || ''));
   });
 
   return { ok: true, minecraftDir: mcDir, minecraftInstalled: installed, profiles };
@@ -606,11 +606,19 @@ function listProfiles() {
 // ---- Jouer / désinstaller ----
 
 function findMinecraftLauncherExe() {
+  const pf86 = process.env['ProgramFiles(x86)'];
+  const pf = process.env.ProgramFiles;
+  const pfw = process.env.ProgramW6432;
+  const local = process.env.LOCALAPPDATA;
   const candidates = [
-    process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Minecraft Launcher', 'MinecraftLauncher.exe'),
-    process.env.ProgramFiles && path.join(process.env.ProgramFiles, 'Minecraft Launcher', 'MinecraftLauncher.exe'),
-    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Programs', 'Minecraft Launcher', 'MinecraftLauncher.exe'),
-    process.env['ProgramFiles(x86)'] && path.join(process.env['ProgramFiles(x86)'], 'Minecraft', 'MinecraftLauncher.exe'),
+    pf86 && path.join(pf86, 'Minecraft Launcher', 'MinecraftLauncher.exe'),
+    pf && path.join(pf, 'Minecraft Launcher', 'MinecraftLauncher.exe'),
+    pfw && path.join(pfw, 'Minecraft Launcher', 'MinecraftLauncher.exe'),
+    local && path.join(local, 'Programs', 'Minecraft Launcher', 'MinecraftLauncher.exe'),
+    pf86 && path.join(pf86, 'Minecraft', 'MinecraftLauncher.exe'),
+    pf && path.join(pf, 'Minecraft', 'MinecraftLauncher.exe'),
+    // Version Microsoft Store : alias d'exécution.
+    local && path.join(local, 'Microsoft', 'WindowsApps', 'MinecraftLauncher.exe'),
   ].filter(Boolean);
   for (const c of candidates) {
     try {
@@ -632,7 +640,7 @@ function playProfile(profileKey) {
   const p = getProfilesPath();
   const data = readLauncherProfiles();
   if (!data.profiles || !data.profiles[profileKey]) {
-    return { ok: false, error: 'Profil introuvable.' };
+    return { ok: false, error: i18n.t('mcl.profileNotFound') };
   }
 
   data.profiles[profileKey].lastUsed = new Date().toISOString();
@@ -640,25 +648,13 @@ function playProfile(profileKey) {
     backup(p);
     fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {
-    return { ok: false, error: 'Impossible de mettre à jour le profil : ' + e.message };
+    return { ok: false, error: i18n.t('mcl.profileUpdateFail', { error: e.message }) };
   }
 
-  const exe = findMinecraftLauncherExe();
-  if (!exe) {
-    return {
-      ok: true,
-      launched: false,
-      message: "Profil pré-sélectionné, mais le launcher Minecraft officiel est introuvable. Ouvre-le manuellement pour jouer.",
-    };
-  }
-
-  try {
-    const child = spawn(exe, [], { detached: true, stdio: 'ignore' });
-    child.unref();
-  } catch (e) {
-    return { ok: true, launched: false, message: "Profil pré-sélectionné, mais le lancement du launcher a échoué : " + e.message };
-  }
-  return { ok: true, launched: true };
+  // Le lancement effectif est fait côté main via shell.openPath (plus fiable
+  // que spawn pour une appli GUI / un alias Microsoft Store). On renvoie juste
+  // le chemin trouvé (ou null).
+  return { ok: true, exe: findMinecraftLauncherExe() };
 }
 
 /**
@@ -671,7 +667,7 @@ function uninstallProfile(profileKey) {
   const p = getProfilesPath();
   const data = readLauncherProfiles();
   const pr = data.profiles && data.profiles[profileKey];
-  if (!pr) return { ok: false, error: 'Profil introuvable.' };
+  if (!pr) return { ok: false, error: i18n.t('mcl.profileNotFound') };
 
   const gameDir = pr.gameDir;
 
@@ -681,7 +677,7 @@ function uninstallProfile(profileKey) {
     backup(p);
     fs.writeFileSync(p, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {
-    return { ok: false, error: 'Écriture de launcher_profiles.json échouée : ' + e.message };
+    return { ok: false, error: i18n.t('mcl.profilesWriteFail', { error: e.message }) };
   }
 
   // Suppression du dossier d'instance, avec garde-fous.
@@ -701,14 +697,460 @@ function uninstallProfile(profileKey) {
         fs.rmSync(resolved, { recursive: true, force: true });
         folderRemoved = true;
       } catch (e) {
-        return { ok: true, folderRemoved: false, warning: "Profil retiré, mais le dossier n'a pas pu être supprimé : " + e.message, gameDir };
+        return { ok: true, folderRemoved: false, warning: i18n.t('mcl.uninstallFolderFail', { error: e.message }), gameDir };
       }
     } else {
-      return { ok: true, folderRemoved: false, warning: "Profil retiré. Le dossier de jeu n'a pas été supprimé automatiquement par précaution : " + gameDir, gameDir };
+      return { ok: true, folderRemoved: false, warning: i18n.t('mcl.uninstallFolderSkipped', { dir: gameDir }), gameDir };
     }
   }
 
   return { ok: true, folderRemoved, gameDir };
+}
+
+// ---- Lancement rapide (hors-ligne, sans le launcher officiel) ----
+//
+// Reconstruit la commande `java` à partir des fichiers DÉJÀ installés dans
+// .minecraft (JSON de version, librairies, natives, assets). Aucun compte
+// Microsoft n'est utilisé : on lance en mode hors-ligne (pseudo local, pas de
+// serveurs en ligne premium). Cible Windows (l'app est Windows-only).
+
+const OS_NAME = 'windows';
+const CP_SEP = ';';
+const NATIVE_ARCH = process.arch === 'ia32' ? '32' : '64';
+
+// Charge un JSON de version brut : versions/<id>/<id>.json.
+function loadVersionJsonRaw(id) {
+  const p = path.join(getVersionsDir(), id, id + '.json');
+  return JSON.parse(fs.readFileSync(p, 'utf8'));
+}
+
+// Résout un JSON de version en fusionnant l'héritage (Forge/NeoForge/Fabric
+// héritent d'une version vanilla via « inheritsFrom »).
+function resolveVersionJson(id, seen) {
+  seen = seen || new Set();
+  if (seen.has(id)) throw new Error('Boucle d\'héritage de version : ' + id);
+  seen.add(id);
+
+  const j = loadVersionJsonRaw(id);
+  if (j.inheritsFrom) {
+    const parent = resolveVersionJson(j.inheritsFrom, seen);
+    return mergeVersions(parent, j);
+  }
+  if (!j.jar) j.jar = id; // le jar client vanilla est versions/<jar>/<jar>.jar
+  return j;
+}
+
+function mergeVersions(parent, child) {
+  const merged = Object.assign({}, parent);
+  merged.id = child.id || parent.id;
+  merged.mainClass = child.mainClass || parent.mainClass;
+  merged.jar = parent.jar || parent.id; // toujours le jar client vanilla
+  merged.assetIndex = child.assetIndex || parent.assetIndex;
+  merged.assets = child.assets || parent.assets;
+  merged.type = child.type || parent.type;
+  merged.javaVersion = child.javaVersion || parent.javaVersion;
+  merged.libraries = [].concat(child.libraries || [], parent.libraries || []);
+
+  if (parent.arguments || child.arguments) {
+    merged.arguments = {
+      game: [].concat(
+        (parent.arguments && parent.arguments.game) || [],
+        (child.arguments && child.arguments.game) || []
+      ),
+      jvm: [].concat(
+        (parent.arguments && parent.arguments.jvm) || [],
+        (child.arguments && child.arguments.jvm) || []
+      ),
+    };
+  }
+  merged.minecraftArguments = child.minecraftArguments || parent.minecraftArguments;
+  return merged;
+}
+
+// Évalue les règles allow/disallow d'une librairie ou d'un argument.
+// Les règles « features » (mode démo, résolution custom) ne sont jamais
+// activées : on ignore donc les entrées qui en dépendent.
+function ruleAllows(rules) {
+  if (!rules || rules.length === 0) return true;
+  let allow = false;
+  for (const r of rules) {
+    let matches = true;
+    if (r.features) matches = false;
+    if (matches && r.os && r.os.name && r.os.name !== OS_NAME) matches = false;
+    if (matches) allow = r.action === 'allow';
+  }
+  return allow;
+}
+
+// Chemin d'une librairie à partir de ses coordonnées Maven (group:artifact:version[:classifier]).
+function mavenToPath(name) {
+  const parts = name.split(':');
+  const group = parts[0].replace(/\./g, '/');
+  const artifact = parts[1];
+  const version = parts[2];
+  const classifier = parts[3];
+  const file = artifact + '-' + version + (classifier ? '-' + classifier : '') + '.jar';
+  return path.join(getMinecraftDir(), 'libraries', group.split('/').join(path.sep), artifact, version, file);
+}
+
+function isNativeName(name) {
+  const parts = name.split(':');
+  return parts.length >= 4 && /^natives-/.test(parts[3]);
+}
+
+// Construit le classpath et la liste des jars de natives à extraire.
+function collectLibraries(version) {
+  const classpath = [];
+  const nativeJars = [];
+  const libDir = path.join(getMinecraftDir(), 'libraries');
+
+  for (const lib of version.libraries || []) {
+    if (!ruleAllows(lib.rules)) continue;
+
+    // Natives « legacy » (pré-1.13) : champ natives + downloads.classifiers.
+    if (lib.natives && lib.natives[OS_NAME]) {
+      const classifier = String(lib.natives[OS_NAME]).replace(/\$\{arch\}/g, NATIVE_ARCH);
+      const cl = lib.downloads && lib.downloads.classifiers && lib.downloads.classifiers[classifier];
+      let jar = null;
+      if (cl && cl.path) jar = path.join(libDir, cl.path.split('/').join(path.sep));
+      else jar = mavenToPath(lib.name + ':' + classifier);
+      if (jar && fs.existsSync(jar)) nativeJars.push(jar);
+      // Certaines libs legacy fournissent aussi un artefact principal à mettre au classpath.
+      const art0 = lib.downloads && lib.downloads.artifact;
+      if (art0 && art0.path) {
+        const p0 = path.join(libDir, art0.path.split('/').join(path.sep));
+        if (fs.existsSync(p0)) classpath.push(p0);
+      }
+      continue;
+    }
+
+    const art = lib.downloads && lib.downloads.artifact;
+    let p = null;
+    if (art && art.path) p = path.join(libDir, art.path.split('/').join(path.sep));
+    else if (lib.name) p = mavenToPath(lib.name);
+    if (!p || !fs.existsSync(p)) continue;
+
+    // Natives « modernes » (1.13+) : entrées de librairie dont le classifier
+    // est natives-windows → à extraire (elles ne contiennent que des .dll).
+    const nativeByPath = art && art.path && /natives-/.test(art.path);
+    if (isNativeName(lib.name) || nativeByPath) nativeJars.push(p);
+    else classpath.push(p);
+  }
+
+  return { classpath, nativeJars };
+}
+
+// Extrait les .dll des jars de natives vers un dossier temporaire (via PowerShell,
+// sans dépendance npm).
+function extractNatives(nativeJars, nativesDir) {
+  return new Promise((resolve) => {
+    try {
+      fs.rmSync(nativesDir, { recursive: true, force: true });
+    } catch (e) { /* ignore */ }
+    fs.mkdirSync(nativesDir, { recursive: true });
+
+    if (!nativeJars.length) return resolve({ ok: true });
+
+    const jarsLiteral = nativeJars.map((j) => "'" + j.replace(/'/g, "''") + "'").join(",\n");
+    const script =
+      'Add-Type -AssemblyName System.IO.Compression.FileSystem | Out-Null\n' +
+      "$dest = '" + nativesDir.replace(/'/g, "''") + "'\n" +
+      '$jars = @(' + jarsLiteral + ')\n' +
+      'foreach ($jar in $jars) {\n' +
+      '  if (-not (Test-Path $jar)) { continue }\n' +
+      '  try {\n' +
+      '    $zip = [System.IO.Compression.ZipFile]::OpenRead($jar)\n' +
+      '    foreach ($e in $zip.Entries) {\n' +
+      "      if ($e.Name -match '\\.dll$') {\n" +
+      '        $out = Join-Path $dest $e.Name\n' +
+      '        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, $out, $true)\n' +
+      '      }\n' +
+      '    }\n' +
+      '    $zip.Dispose()\n' +
+      '  } catch { }\n' +
+      '}\n';
+
+    const scriptPath = path.join(os.tmpdir(), 'gg-natives-' + Date.now() + '.ps1');
+    try {
+      fs.writeFileSync(scriptPath, script, 'utf8');
+    } catch (e) {
+      return resolve({ ok: false, error: e.message });
+    }
+
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', scriptPath],
+      { windowsHide: true, timeout: 120000 },
+      (err) => {
+        try { fs.unlinkSync(scriptPath); } catch (e) { /* ignore */ }
+        if (err) return resolve({ ok: false, error: err.message });
+        resolve({ ok: true });
+      }
+    );
+  });
+}
+
+// UUID hors-ligne, identique à celui calculé par Minecraft :
+// UUID v3 (MD5) de « OfflinePlayer:<pseudo> ».
+function offlineUuid(name) {
+  const md5 = crypto.createHash('md5').update('OfflinePlayer:' + name, 'utf8').digest();
+  md5[6] = (md5[6] & 0x0f) | 0x30;
+  md5[8] = (md5[8] & 0x3f) | 0x80;
+  const h = md5.toString('hex');
+  return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+}
+
+// Composants de runtime Java installés par le launcher officiel, par version majeure.
+function componentsForMajor(major) {
+  const map = {
+    8: ['jre-legacy'],
+    16: ['java-runtime-alpha'],
+    17: ['java-runtime-gamma', 'java-runtime-beta', 'java-runtime-gamma-snapshot'],
+    21: ['java-runtime-delta'],
+  };
+  return map[major] || null;
+}
+
+// Cherche un javaw.exe adapté : d'abord dans les runtimes du launcher officiel
+// (pour coller à la version majeure requise), sinon sur le PATH.
+async function resolveJava(version) {
+  const major = version.javaVersion && version.javaVersion.majorVersion;
+  const wanted = componentsForMajor(major);
+
+  const roots = [];
+  const local = process.env.LOCALAPPDATA;
+  const pf86 = process.env['ProgramFiles(x86)'];
+  const pf = process.env.ProgramFiles;
+  if (local) {
+    roots.push(path.join(local, 'Packages', 'Microsoft.4297127D64EC6_8wekyb3d8bbwe', 'LocalCache', 'Local', 'runtime'));
+  }
+  if (pf86) roots.push(path.join(pf86, 'Minecraft Launcher', 'runtime'));
+  if (pf) roots.push(path.join(pf, 'Minecraft Launcher', 'runtime'));
+  roots.push(path.join(getMinecraftDir(), 'runtime'));
+
+  const found = [];
+  for (const root of roots) {
+    for (const comp of safeReaddir(root)) {
+      const compDir = path.join(root, comp);
+      for (const plat of safeReaddir(compDir)) {
+        const candidates = [
+          path.join(compDir, plat, comp, 'bin', 'javaw.exe'),
+          path.join(compDir, plat, 'bin', 'javaw.exe'),
+        ];
+        for (const c of candidates) {
+          try { if (fs.existsSync(c)) found.push({ comp, javaw: c }); } catch (e) { /* ignore */ }
+        }
+      }
+    }
+  }
+
+  if (wanted) {
+    const match = found.find((f) => wanted.includes(f.comp));
+    if (match) return match.javaw;
+  }
+  if (found.length) return found[0].javaw;
+
+  const hasJava = await detectJava();
+  return hasJava ? 'javaw' : null;
+}
+
+function substitute(str, ph) {
+  return String(str).replace(/\$\{(\w+)\}/g, (m, k) => (ph[k] != null ? ph[k] : m));
+}
+
+function processArgList(list, ph) {
+  const out = [];
+  for (const item of list || []) {
+    if (typeof item === 'string') {
+      out.push(substitute(item, ph));
+    } else if (item && typeof item === 'object') {
+      if (!ruleAllows(item.rules)) continue;
+      const val = item.value;
+      if (Array.isArray(val)) val.forEach((v) => out.push(substitute(v, ph)));
+      else if (typeof val === 'string') out.push(substitute(val, ph));
+    }
+  }
+  return out;
+}
+
+/**
+ * Lance directement un profil en mode hors-ligne, sans passer par le launcher
+ * officiel. Réutilise les fichiers déjà installés dans .minecraft.
+ * @returns { ok, playerName } ou { ok:false, error }
+ */
+async function quickLaunchProfile(profileKey, opts) {
+  opts = opts || {};
+  const data = readLauncherProfiles();
+  const pr = data.profiles && data.profiles[profileKey];
+  if (!pr) return { ok: false, error: 'profileNotFound' };
+
+  const versionId = pr.lastVersionId;
+  if (!versionId) return { ok: false, error: 'noVersion' };
+
+  const gameDir = pr.gameDir || getMinecraftDir();
+
+  let version;
+  try {
+    version = resolveVersionJson(versionId);
+  } catch (e) {
+    return { ok: false, error: 'versionJson', versionId, detail: e.message };
+  }
+
+  const clientJar = path.join(getVersionsDir(), version.jar, version.jar + '.jar');
+  if (!fs.existsSync(clientJar)) {
+    return { ok: false, error: 'clientJar', clientJar };
+  }
+
+  const javaPath = await resolveJava(version);
+  if (!javaPath) return { ok: false, error: 'noJava' };
+
+  const { classpath, nativeJars } = collectLibraries(version);
+  classpath.push(clientJar);
+
+  const nativesDir = path.join(os.tmpdir(), 'gg-natives-' + versionId.replace(/[^a-z0-9]/gi, '_'));
+  const nat = await extractNatives(nativeJars, nativesDir);
+  if (!nat.ok) return { ok: false, error: 'natives', detail: nat.error };
+
+  const assetsDir = path.join(getMinecraftDir(), 'assets');
+  const assetIndex = (version.assetIndex && version.assetIndex.id) || version.assets || 'legacy';
+  const playerName =
+    (opts.playerName && String(opts.playerName).trim()) ||
+    appSettings.getSettings().offlinePlayerName ||
+    (os.userInfo().username || 'Player');
+  const uuid = offlineUuid(playerName);
+
+  const ph = {
+    auth_player_name: playerName,
+    version_name: versionId,
+    game_directory: gameDir,
+    assets_root: assetsDir,
+    game_assets: assetsDir,
+    assets_index_name: assetIndex,
+    auth_uuid: uuid,
+    auth_access_token: '0',
+    auth_session: 'token:0:' + uuid,
+    clientid: '',
+    auth_xuid: '',
+    user_type: 'legacy',
+    user_properties: '{}',
+    version_type: version.type || 'release',
+    natives_directory: nativesDir,
+    launcher_name: 'G-GameManager',
+    launcher_version: '1.0',
+    classpath: classpath.join(CP_SEP),
+    library_directory: path.join(getMinecraftDir(), 'libraries'),
+    classpath_separator: CP_SEP,
+  };
+
+  // Arguments JVM
+  let jvmArgs;
+  if (version.arguments && version.arguments.jvm) {
+    jvmArgs = processArgList(version.arguments.jvm, ph);
+  } else {
+    jvmArgs = ['-Djava.library.path=' + nativesDir, '-cp', ph.classpath];
+  }
+  jvmArgs.unshift('-Dminecraft.launcher.brand=G-GameManager');
+
+  // Mémoire : arguments Java du profil, sinon défaut raisonnable.
+  const userJavaArgs = (pr.javaArgs ? String(pr.javaArgs) : '').trim();
+  if (userJavaArgs) jvmArgs = jvmArgs.concat(userJavaArgs.split(/\s+/));
+  else if (!jvmArgs.some((a) => /^-Xmx/.test(a))) jvmArgs.push('-Xmx2G');
+
+  // Arguments du jeu
+  let gameArgs;
+  if (version.arguments && version.arguments.game) {
+    gameArgs = processArgList(version.arguments.game, ph);
+  } else if (version.minecraftArguments) {
+    gameArgs = version.minecraftArguments.split(/\s+/).map((a) => substitute(a, ph));
+  } else {
+    gameArgs = [];
+  }
+
+  const fullArgs = jvmArgs.concat([version.mainClass], gameArgs);
+
+  // Journalise la commande complète (utile en cas de problème de lancement).
+  try {
+    fs.writeFileSync(
+      path.join(os.tmpdir(), 'gg-quicklaunch.log'),
+      'java: ' + javaPath + '\ncwd: ' + gameDir + '\n\n' + fullArgs.join('\n'),
+      'utf8'
+    );
+  } catch (e) { /* best-effort */ }
+
+  let child;
+  try {
+    child = spawn(javaPath, fullArgs, { cwd: gameDir, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  } catch (e) {
+    return { ok: false, error: 'spawn', detail: e.message, java: javaPath };
+  }
+
+  // Fenêtre de diagnostic : on écoute une éventuelle erreur de spawn ou un crash
+  // immédiat (mauvaise version de Java, librairie manquante…) pour la remonter à
+  // l'utilisateur. Si le process tourne toujours après le délai, c'est un succès.
+  return await new Promise((resolve) => {
+    let settled = false;
+    let out = '';
+    // On garde beaucoup plus de sortie : le message d'exception utile est en
+    // HAUT de la pile, donc conserver seulement la fin le masquerait.
+    const capture = (d) => { out += d.toString(); if (out.length > 200000) out = out.slice(-200000); };
+    if (child.stdout) child.stdout.on('data', capture); // draine en continu (évite le blocage du tuyau)
+    if (child.stderr) child.stderr.on('data', capture);
+
+    // Extrait la ou les lignes réellement informatives d'une sortie Java :
+    // la première ligne d'exception/erreur (hors « at … ») et son éventuel « Caused by ».
+    function meaningfulError(full) {
+      const lines = full.split(/\r?\n/);
+      const picks = [];
+      for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        if (/^\s+at\s/.test(l)) continue;
+        if (/(Exception|Error|Caused by|Could not|Unable to|FATAL|failed|introuvable)/i.test(l) && l.trim()) {
+          picks.push(l.trim());
+          if (picks.length >= 4) break;
+        }
+      }
+      if (picks.length) return picks.join('\n');
+      // repli : premières lignes non vides
+      return lines.filter((l) => l.trim()).slice(0, 6).join('\n');
+    }
+
+    function writeOutputLog(full) {
+      const p = path.join(os.tmpdir(), 'gg-quicklaunch-output.log');
+      try { fs.writeFileSync(p, full, 'utf8'); } catch (e) { /* ignore */ }
+      return p;
+    }
+
+    child.on('error', (e) => {
+      if (settled) return;
+      settled = true;
+      resolve({ ok: false, error: 'spawn', detail: e.message, java: javaPath });
+    });
+
+    child.on('exit', (code) => {
+      if (settled) return;
+      settled = true;
+      if (code === 0) {
+        resolve({ ok: true, playerName, java: javaPath });
+      } else {
+        const full = out.trim();
+        const logPath = writeOutputLog(full);
+        const head = meaningfulError(full);
+        resolve({
+          ok: false,
+          error: 'spawn',
+          detail: 'code ' + code + (head ? ' — ' + head : '') + '\n[log complet : ' + logPath + ']',
+          java: javaPath,
+        });
+      }
+    });
+
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.unref(); } catch (e) { /* ignore */ }
+      resolve({ ok: true, playerName, java: javaPath });
+    }, 6000);
+  });
 }
 
 module.exports = {
@@ -726,6 +1168,7 @@ module.exports = {
   readInstanceMarker,
   writeInstanceMarker,
   playProfile,
+  quickLaunchProfile,
   uninstallProfile,
   findMinecraftLauncherExe,
   downloadToFile,

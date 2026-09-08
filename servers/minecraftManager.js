@@ -225,6 +225,58 @@ function writeLaunchArgs(serverPath, argsText) {
   return { exists: true, argsText: argLines.join('\n') };
 }
 
+// ---- Listes d'accès : whitelist / ops / bans ----
+
+const ACCESS_FILES = {
+  whitelist: 'whitelist.json',
+  ops: 'ops.json',
+  bans: 'banned-players.json',
+};
+
+function readJsonArray(filePath) {
+  try {
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      return Array.isArray(data) ? data : [];
+    }
+  } catch (e) {
+    /* fichier absent ou corrompu : liste vide */
+  }
+  return [];
+}
+
+/** Lit whitelist.json / ops.json / banned-players.json et renvoie des listes normalisées. */
+function readAccessLists(serverPath) {
+  const wl = readJsonArray(path.join(serverPath, ACCESS_FILES.whitelist));
+  const ops = readJsonArray(path.join(serverPath, ACCESS_FILES.ops));
+  const bans = readJsonArray(path.join(serverPath, ACCESS_FILES.bans));
+  return {
+    whitelist: wl.map((e) => ({ name: e.name || '', uuid: e.uuid || '' })),
+    ops: ops.map((e) => ({ name: e.name || '', uuid: e.uuid || '', level: e.level })),
+    bans: bans.map((e) => ({ name: e.name || '', uuid: e.uuid || '', reason: e.reason || '' })),
+  };
+}
+
+/** Ajoute une entrée dans le fichier JSON d'une liste (édition hors-ligne, serveur arrêté). */
+function addToAccessFile(serverPath, list, entry) {
+  const file = ACCESS_FILES[list];
+  if (!file) return;
+  const fp = path.join(serverPath, file);
+  const arr = readJsonArray(fp);
+  const exists = arr.some((e) => (e.name || '').toLowerCase() === (entry.name || '').toLowerCase());
+  if (!exists) arr.push(entry);
+  fs.writeFileSync(fp, JSON.stringify(arr, null, 2), 'utf8');
+}
+
+/** Retire une entrée (par nom) du fichier JSON d'une liste. */
+function removeFromAccessFile(serverPath, list, name) {
+  const file = ACCESS_FILES[list];
+  if (!file) return;
+  const fp = path.join(serverPath, file);
+  const arr = readJsonArray(fp).filter((e) => (e.name || '').toLowerCase() !== String(name).toLowerCase());
+  fs.writeFileSync(fp, JSON.stringify(arr, null, 2), 'utf8');
+}
+
 // ---- Serverpacks installés (pour interdire un re-téléchargement) ----
 
 const SERVERPACK_MARKER = '.ggserverpack.json';
@@ -292,6 +344,9 @@ module.exports = {
   readServerpackMarker,
   writeServerpackMarker,
   getInstalledServerpacks,
+  readAccessLists,
+  addToAccessFile,
+  removeFromAccessFile,
   normalizeName,
   JVM_ARGS_FILENAME,
   SERVERPACK_MARKER,

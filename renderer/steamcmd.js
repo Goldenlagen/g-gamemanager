@@ -24,6 +24,12 @@
   // Doit correspondre à PROCESS_ID côté processManager/steamcmdManager (main.js).
   const SERVER_ID = 'steamcmd';
 
+  // Traduction (repli sur la clé si absente).
+  function tr(key, params) {
+    const v = window.AppSettings ? window.AppSettings.t(key, params) : null;
+    return v != null ? v : key;
+  }
+
   function applyStatus({ status, errorMessage }) {
     el.statusDot.className = `status-dot status-${status}`;
 
@@ -57,7 +63,11 @@
   }
 
   function resetConsole() {
-    el.consoleOutput.innerHTML = '<div class="console-empty">Aucune sortie pour le moment. Lance SteamCMD pour voir la console ici.</div>';
+    const div = document.createElement('div');
+    div.className = 'console-empty';
+    div.textContent = tr('steamcmd.consoleEmpty');
+    el.consoleOutput.innerHTML = '';
+    el.consoleOutput.appendChild(div);
   }
 
   window.api.onServerLog(({ serverId: id, lines }) => {
@@ -88,7 +98,7 @@
   el.downloadBtn.addEventListener('click', async () => {
     window.GameSounds?.toggle();
     el.downloadBtn.disabled = true;
-    el.downloadStatus.textContent = 'Téléchargement et extraction en cours (quelques instants)…';
+    el.downloadStatus.textContent = tr('steamcmd.downloading');
 
     const result = await window.api.steamcmdDownload();
 
@@ -103,10 +113,7 @@
   });
 
   el.resetBtn.addEventListener('click', async () => {
-    const confirmed = confirm(
-      "Ça va supprimer entièrement SteamCMD (il faudra le retélécharger). Utile en cas d'erreur " +
-      "\"didn't shutdown cleanly\" ou \"missing configuration\" lors d'une installation. Continuer ?"
-    );
+    const confirmed = confirm(tr('steamcmd.resetConfirm'));
     if (!confirmed) return;
 
     window.GameSounds?.back();
@@ -118,7 +125,7 @@
       window.GameSounds?.confirm();
       await refreshInstalledState();
     } else {
-      alert(`Échec de la réinitialisation : ${result.error}`);
+      alert(`${tr('steamcmd.resetFailedLabel')} ${result.error}`);
     }
   });
 
@@ -138,7 +145,7 @@
   });
 
   el.forceStopBtn.addEventListener('click', async () => {
-    const confirmed = confirm("Forcer l'arrêt va tuer immédiatement SteamCMD. Continuer ?");
+    const confirmed = confirm(tr('steamcmd.forceStopConfirm'));
     if (!confirmed) return;
     window.GameSounds?.back();
     await window.api.steamcmdForceStop();
@@ -178,6 +185,12 @@
       el.commandInput.value = btn.dataset.cmd;
       el.commandInput.focus();
     });
+  });
+
+  // Retraduit la console vide quand la langue change.
+  document.addEventListener('gg-langchange', () => {
+    const emptyLine = el.consoleOutput.querySelector('.console-empty');
+    if (emptyLine) emptyLine.textContent = tr('steamcmd.consoleEmpty');
   });
 
   window.SteamCmdPanel = {
